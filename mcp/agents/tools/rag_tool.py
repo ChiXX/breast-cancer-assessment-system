@@ -1,0 +1,72 @@
+import os
+import json
+import pickle
+import numpy as np
+import faiss
+from dashscope import TextEmbedding
+from qwen_agent.tools.base import BaseTool, register_tool
+
+VECTOR_STORE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'vector_store')
+INDEX_PATH = f"{VECTOR_STORE_DIR}/index.faiss"
+DOC_MAP_PATH = f"{VECTOR_STORE_DIR}/doc_map.pkl"
+
+@register_tool('rag_query_tool')
+class RAGQueryTool(BaseTool):
+    description = 'Query the local FAISS medical guidelines index for side effect assessment and advice.'
+    parameters = [{
+        'name': 'query',
+        'type': 'string',
+        'description': 'The medical symptom or condition to query',
+        'required': True
+    }]
+
+    def __init__(self, cfg=None):
+        super().__init__(cfg)
+        self.index = None
+        self.doc_map = None
+        if os.path.exists(INDEX_PATH) and os.path.exists(DOC_MAP_PATH):
+            self.index = faiss.read_index(INDEX_PATH)
+            with open(DOC_MAP_PATH, "rb") as f:
+                self.doc_map = pickle.load(f)
+
+    def call(self, params: str, **kwargs) -> str:
+        query = json.loads(params).get('query', '')
+        if not query:
+            return "No query provided."
+        
+        if not self.index or not self.doc_map:
+            return "Knowledge base not initialized or missing."
+
+        try:
+            resp = TextEmbedding.call(
+                model=TextEmbedding.Models.text_embedding_v3,
+                input=[query]
+            )
+            if resp.status_code != 200:
+                return f"Embedding error: {resp.message}"
+            
+            embedding = resp.output['embeddings'][0]['embedding']
+            embedding_np = np.array([embedding]).astype('float32')
+            
+            # Query top 3
+            D, I = self.index.search(embedding_np, 3)
+            
+            results = []
+            for idx in I[0]:
+                if idx in self.doc_map:
+                    doc = self.doc_map[idx]
+                    results.append(
+                        f"ID: {doc.get('id', 'N/A')}\n"
+                        f"Risk Level: {doc.get('risk_level')}\n"
+                        f"Label: {doc.get('risk_label')}\n"
+                        f"Answer: {doc.get('answer')}\n"
+                        f"Action: {doc.get('action_required')}\n"
+                    )
+            
+            if not results:
+                return "No relevant information found."
+            
+            return "\n---\n".join(results)
+            
+        except Exception as e:
+            return f"Error during query: {str(e)}"
