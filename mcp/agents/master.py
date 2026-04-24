@@ -1,14 +1,17 @@
 import os
+import json
 from typing import List, Optional, Union, Iterator
 from qwen_agent.agents import Assistant
+from qwen_agent.tools.base import BaseTool, register_tool
 from langsmith import traceable
 import dashscope
 from mcp.agents.tools import get_all_skill_metadata
+from mcp.agents.rag_agent import RAGAgent
 
 class MedicalMaster:
     """
     MedicalMaster Agent responsible for orchestrating the medical assessment process.
-    Uses qwen-agent framework and integrates LangSmith for tracing.
+    Uses qwen-agent Router framework and integrates LangSmith for tracing.
     """
     
     def __init__(self, model_type: str = 'qwen3.5-plus', name: str = 'Medical Assistant'):
@@ -23,25 +26,61 @@ class MedicalMaster:
             }
         }
         
+        # Initialize sub-agents
+        self.rag_expert = RAGAgent(llm_cfg=self.llm_cfg)
+        
+        # Define a wrapper tool for RAG_Expert to make it more reliable for the Assistant
+        rag_expert_instance = self.rag_expert
+        @register_tool('RAG_Expert')
+        class RAGExpertTool(BaseTool):
+            description = '医疗知识专家，负责查询指南和提供专业建议。当用户提到症状时必须调用。'
+            parameters = {
+                'type': 'object',
+                'properties': {
+                    'query': {
+                        'type': 'string',
+                        'description': '需要查询的症状或问题描述'
+                    }
+                },
+                'required': ['query']
+            }
+
+            def call(self, params: Union[str, dict], **kwargs) -> str:
+                if isinstance(params, str):
+                    try:
+                        params = json.loads(params)
+                    except json.JSONDecodeError:
+                        query = params
+                    else:
+                        query = params.get('query', params)
+                else:
+                    query = params.get('query', '')
+                # Call the agent synchronously
+                return rag_expert_instance.chat(query)
+
         # Load all skill metadata for system prompt
         skills_metadata = get_all_skill_metadata()
         skills_info = "\n".join([f"- {m.get('name')}: {m.get('description')}" for m in skills_metadata])
         
         # Define the system prompt for the master agent
         self.system_prompt = (
-            "你是一个专业的乳腺癌副作用评估助手。你的任务是通过与患者交流，提取症状、程度、持续时间等信息。\n"
-            "以下是系统中可用的评估技能（元数据）：\n"
+            "你是一个专业的医疗服务中控（客服）。你的职责是作为患者与医疗专家系统之间的桥梁，负责初步接待、意图识别和资源调度。\n"
+            "以下是系统中可用的专家工具与评估技能：\n"
+            "## 专家工具\n"
+            f"- RAG_Expert: {self.rag_expert.description}\n\n"
+            "## 评估技能\n"
             f"{skills_info}\n\n"
-            "决策逻辑：\n"
-            "1. 查阅技能：如果上述元数据中某个技能与用户描述匹配，必须先调用 'read_skill' 查看其完整执行手册，然后严格按照手册指令行事。\n"
-            "2. 知识检索：如果没有匹配的技能，请使用 'rag_query_tool' 查询医疗指南（L2级）。\n"
-            "3. 沟通原则：回答应专业、富有同情心，并清晰指出任何需要立即就医的红旗信号。信息不足时应主动引导患者补充细节。"
+            "工作准则：\n"
+            "1. **中控定位**：你不是医生，严禁直接给出医疗建议。你的任务是调用专家工具（RAG_Expert）获取权威指南，并配合技能手册（read_skill）进行追问。\n"
+            "2. **强制调用**：只要用户提到症状，你必须立即调用 'RAG_Expert'。如果信息缺失，再配合 'read_skill' 查看手册并进行极简追问。\n"
+            "3. **服务态度**：态度专业且亲切，内容必须极致简洁。每次回复只准提一个最核心的问题，追问总数不超 2 次。\n"
+            "4. **信息汇总**：作为中控，你应将 'RAG_Expert' 的专业评估结果**原样转达**给用户，严禁改动其格式或核心内容（如风险等级、ID等）。你只需在前面添加简洁的开场白，或在末尾进行必要的补充提醒。"
         )
         
-        # Tools to be used by the agent
+        # Tools to be used by the Assistant
         self.tools = [
             'read_skill',
-            'rag_query_tool'
+            'RAG_Expert'
         ]
         
         # Initialize the underlying Qwen Assistant
