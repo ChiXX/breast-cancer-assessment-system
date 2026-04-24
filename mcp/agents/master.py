@@ -62,25 +62,41 @@ class MedicalMaster:
         skills_metadata = get_all_skill_metadata()
         skills_info = "\n".join([f"- {m.get('name')}: {m.get('description')}" for m in skills_metadata])
         
+        # Load historical memory clues (Shared across all sessions)
+        historical_memory_text = "暂无历史记忆。"
+        from mcp.agents.tools.memory_tools import ReadMemoryList
+        memory_list_tool = ReadMemoryList()
+        res = memory_list_tool.call({})
+        if res.get('status') == 'success' and res.get('memories'):
+            clues = []
+            for mem in res['memories']:
+                clues.append(f"- 时间: {mem['timestamp']} | 会话: {mem['session_id']} | 标题: {mem['title']}")
+            historical_memory_text = "以下为已有历史记忆档案的线索：\n" + "\n".join(clues) + "\n\n(提示：请根据上述线索，通过调用 'read_memory_detail' 工具并提供对应的 session_id 和 timestamp 获取详细记录。)"
+                
         # Define the system prompt for the master agent
         self.system_prompt = (
             "你是一个专业的医疗服务中控（客服）。你的职责是作为患者与医疗专家系统之间的桥梁，负责初步接待、意图识别和资源调度。\n"
+            "每次对话开始时，你应当调用 'read_memory_list' 获取当前会话的历史记忆，并根据需要调用 'read_memory_detail' 了解上下文。\n"
             "以下是系统中可用的专家工具与评估技能：\n"
             "## 专家工具\n"
             f"- RAG_Expert: {self.rag_expert.description}\n\n"
             "## 评估技能\n"
             f"{skills_info}\n\n"
+            "## 历史记忆\n"
+            f"{historical_memory_text}\n\n"
             "工作准则：\n"
-            "1. **中控定位**：你不是医生，严禁直接给出医疗建议。你的任务是调用专家工具（RAG_Expert）获取权威指南，并配合技能手册（read_skill）进行追问。\n"
-            "2. **强制调用**：只要用户提到症状，你必须立即调用 'RAG_Expert'。如果信息缺失，再配合 'read_skill' 查看手册并进行极简追问。\n"
+            "1. **中控定位**：你不是医生，严禁直接给出医疗建议。你的任务是合理调度工具与记忆资源。\n"
+            "2. **记忆优先与工具调用**：只要用户提到症状，**首先**检查【历史记忆】。如果历史记忆中已有该症状相关的可参考回答或评估，你可以优先复用该记忆或调用 'read_memory_detail' 查阅详情，而无需重复调用 'RAG_Expert'。如果记忆中没有相关内容，你必须立即调用 'RAG_Expert'。若信息依然缺失，再配合 'read_skill' 查看手册进行极简追问。\n"
             "3. **服务态度**：态度专业且亲切，内容必须极致简洁。每次回复只准提一个最核心的问题，追问总数不超 2 次。\n"
-            "4. **信息汇总**：作为中控，你应将 'RAG_Expert' 的专业评估结果**原样转达**给用户，严禁改动其格式或核心内容（如风险等级、ID等）。你只需在前面添加简洁的开场白，或在末尾进行必要的补充提醒。"
+            "4. **信息汇总**：作为中控，你应将评估结果（无论是来自 'RAG_Expert' 还是【历史记忆】）**原样转达**给用户，严禁改动其格式或核心内容（如风险等级、ID等）。你只需在前面添加简洁的开场白，或在末尾进行必要的补充提醒。"
         )
         
         # Tools to be used by the Assistant
         self.tools = [
             'read_skill',
-            'RAG_Expert'
+            'RAG_Expert',
+            'read_memory_list',
+            'read_memory_detail'
         ]
         
         # Initialize the underlying Qwen Assistant

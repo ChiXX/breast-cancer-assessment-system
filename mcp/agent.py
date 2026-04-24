@@ -6,18 +6,23 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from mcp.agents.master import MedicalMaster
+from mcp.agents.memory_agent import MemoryAgent
 import mcp.agents.tools.skill_tools
 import mcp.agents.tools.rag_tool
+import mcp.agents.tools.memory_tools
 
 async def run_tui():
     """
     A simple Text User Interface for interacting with the MedicalMaster agent.
     """
+    import uuid
+    session_id = f"{uuid.uuid4().hex}"
     master = MedicalMaster()
+    memory_agent = MemoryAgent()
     history = []
     
     print("=" * 100)
-    print(" " * 30 + "Medical Side Effect Assessment TUI")
+    print(" " * 30 + f"Medical Side Effect Assessment TUI (Session: {session_id})")
     print("-" * 100)
 
     while True:
@@ -28,6 +33,9 @@ async def run_tui():
                 continue
             
             if user_input.lower() == 'exit':
+                print("Saving memory before exit...")
+                result = memory_agent.process_session(session_id, history)
+                print(f"[Memory Agent]: {result}")
                 print("Goodbye!")
                 break
             
@@ -35,15 +43,24 @@ async def run_tui():
                 history = []
                 print("History cleared.")
                 continue
+                
+            if user_input.lower() == '/memory':
+                print("Triggering Memory Agent to save current session...")
+                result = memory_agent.process_session(session_id, history)
+                print(f"[Memory Agent]: {result}")
+                continue
+                
+            if user_input.lower() == '/summarize_all':
+                print("Summarizing all memories for this session...")
+                result = memory_agent.summarize_all(session_id)
+                print(f"[Memory Agent]: {result}")
+                continue
             
             # Add user message to history
             history.append({'role': 'user', 'content': user_input})
             
             full_response = ""
-            # Use the generator for potential future streaming support in TUI
-            # For now, we'll just collect the final response
             for response_chunk in master.run(history):
-                # qwen-agent Assistant returns a list of messages representing the current state
                 if isinstance(response_chunk, list) and len(response_chunk) > 0:
                     current_content = response_chunk[-1].get('content', '')
                     if current_content:
@@ -51,10 +68,12 @@ async def run_tui():
             
             print(f"\n[Medical Assistant]: {full_response}")
             
-            # Update history with assistant response
             history.append({'role': 'assistant', 'content': full_response})
 
         except KeyboardInterrupt:
+            print("\nSaving memory before exit...")
+            result = memory_agent.process_session(session_id, history)
+            print(f"[Memory Agent]: {result}")
             print("\nExiting...")
             break
         except Exception as e:
