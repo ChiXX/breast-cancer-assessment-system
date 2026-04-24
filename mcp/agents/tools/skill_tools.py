@@ -1,69 +1,112 @@
 import os
+import yaml
+import json
+from typing import Union
 from qwen_agent.tools.base import BaseTool, register_tool
+from langsmith import traceable
 
-@register_tool('discover_skills')
-class DiscoverSkills(BaseTool):
-    description = '在 skills/ 目录下通过读取 SKILL.md 的元数据来搜索匹配意图的技能'
-    parameters = {
-        'type': 'object',
-        'properties': {
-            'query': {
-                'type': 'string',
-                'description': '意图关键词或症状描述'
-            }
-        },
-        'required': ['query']
+def get_skill_paths():
+    """获取技能搜索路径：项目路径和个人路径"""
+    paths = []
+    # 项目路径: mcp/agents/skills
+    project_skills = os.path.abspath("mcp/agents/skills")
+    if os.path.exists(project_skills):
+        paths.append(project_skills)
+    
+    # 个人路径: ~/.qwen/skills
+    personal_skills = os.path.expanduser("~/.qwen/skills")
+    if os.path.exists(personal_skills):
+        paths.append(personal_skills)
+        
+    return paths
+
+def parse_skill_md(file_path):
+    """解析 SKILL.md 文件，提取 YAML frontmatter 和内容"""
+    if not os.path.exists(file_path):
+        return None
+    
+    with open(file_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    
+    if content.startswith('---'):
+        parts = content.split('---', 2)
+        if len(parts) >= 3:
+            try:
+                metadata = yaml.safe_load(parts[1])
+                body = parts[2].strip()
+                return {
+                    'metadata': metadata,
+                    'content': body
+                }
+            except Exception:
+                pass
+    return {
+        'metadata': {},
+        'content': content
     }
 
-    def call(self, params: str, **kwargs):
-        # 注意：这里路径需要向上跳一级到 mcp/skills
-        skills_root = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'skills')
-        matched_skills = []
-        
-        if not os.path.exists(skills_root):
-            return {'status': 'error', 'message': f'Skills directory {skills_root} not found'}
-
-        for skill_dir in os.listdir(skills_root):
-            skill_path = os.path.join(skills_root, skill_dir)
+def get_all_skill_metadata():
+    """获取所有技能的元数据（YAML 头）"""
+    metadata_list = []
+    skill_roots = get_skill_paths()
+    
+    for root in skill_roots:
+        if not os.path.isdir(root):
+            continue
+        for skill_dir in os.listdir(root):
+            skill_path = os.path.join(root, skill_dir)
             if os.path.isdir(skill_path):
                 skill_md_path = os.path.join(skill_path, 'SKILL.md')
-                if os.path.exists(skill_md_path):
-                    with open(skill_md_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                        if params.get('query', '').lower() in content.lower():
-                            matched_skills.append({
-                                'name': skill_dir,
-                                'path': skill_md_path
-                            })
-        
-        return {
-            'status': 'success',
-            'skills': matched_skills,
-            'message': f'Found {len(matched_skills)} skills matching query.'
-        }
+                parsed = parse_skill_md(skill_md_path)
+                if parsed:
+                    metadata = parsed['metadata']
+                    # 确保包含名称
+                    if 'name' not in metadata:
+                        metadata['name'] = skill_dir
+                    metadata_list.append(metadata)
+    return metadata_list
 
-@register_tool('load_skill')
-class LoadSkill(BaseTool):
-    description = '加载指定技能的 SKILL.md 完整指令内容'
+@register_tool('read_skill')
+class ReadSkill(BaseTool):
+    description = '查阅指定技能的完整执行手册（SKILL.md 内容）。当系统提示词中的元数据表明某个技能可能适用时使用。'
     parameters = {
         'type': 'object',
         'properties': {
             'skill_name': {
                 'type': 'string',
-                'description': '技能文件夹名称 (如 hand-foot-syndrome)'
+                'description': '技能名称 (元数据中的 name)'
             }
         },
         'required': ['skill_name']
     }
 
-    def call(self, params: str, **kwargs):
-        skill_name = params.get('skill_name', '')
-        skills_root = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'skills')
-        skill_md_path = os.path.join(skills_root, skill_name, 'SKILL.md')
-        
-        if os.path.exists(skill_md_path):
-            with open(skill_md_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            return {'status': 'success', 'content': content}
+    @traceable(name="Read Skill Tool Call")
+    def call(self, params: Union[str, dict], **kwargs):
+        if isinstance(params, str):
+            try:
+                params = json.loads(params)
+            except json.JSONDecodeError:
+                skill_name = params
+            else:
+                skill_name = params.get('skill_name', '')
         else:
-            return {'status': 'error', 'message': f'Skill {skill_name} not found'}
+            skill_name = params.get('skill_name', '')
+            
+        skill_roots = get_skill_paths()
+        
+        for root in skill_roots:
+            for skill_dir in os.listdir(root):
+                skill_path = os.path.join(root, skill_dir)
+                if os.path.isdir(skill_path):
+                    skill_md_path = os.path.join(skill_path, 'SKILL.md')
+                    parsed = parse_skill_md(skill_md_path)
+                    if parsed:
+                        if parsed['metadata'].get('name') == skill_name or skill_dir == skill_name:
+                            return {
+                                'status': 'success', 
+                                'name': skill_name,
+                                'metadata': parsed['metadata'],
+                                'content': parsed['content']
+                            }
+                            
+        return {'status': 'error', 'message': f'Skill {skill_name} not found'}

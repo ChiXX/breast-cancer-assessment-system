@@ -3,8 +3,16 @@ import json
 import pickle
 import numpy as np
 import faiss
+import dashscope
 from dashscope import TextEmbedding
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+dashscope.api_key = os.getenv('DASHSCOPE_API_KEY')
 from qwen_agent.tools.base import BaseTool, register_tool
+from langsmith import traceable
+from typing import Union
 
 VECTOR_STORE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'vector_store')
 INDEX_PATH = f"{VECTOR_STORE_DIR}/index.faiss"
@@ -29,8 +37,18 @@ class RAGQueryTool(BaseTool):
             with open(DOC_MAP_PATH, "rb") as f:
                 self.doc_map = pickle.load(f)
 
-    def call(self, params: str, **kwargs) -> str:
-        query = json.loads(params).get('query', '')
+    @traceable(name="RAG Query Tool Call")
+    def call(self, params: Union[str, dict], **kwargs) -> str:
+        if isinstance(params, str):
+            try:
+                params = json.loads(params)
+            except json.JSONDecodeError:
+                query = params
+            else:
+                query = params.get('query', '')
+        else:
+            query = params.get('query', '')
+            
         if not query:
             return "No query provided."
         

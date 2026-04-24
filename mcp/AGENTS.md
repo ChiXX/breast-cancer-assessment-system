@@ -17,6 +17,7 @@
 | **决策顺序** | 优先 `discover_skills` (L1) -> 失败则回退 `RAG` (L2) |
 | **LEARN 时机** | 仅在会话结束后由反馈层触发，禁止推理中途调用 |
 | **数据只增** | `data/*.json` 只追加，禁止修改已有条目 |
+| **可观测性** | 强制集成 LangSmith，追踪 Agent 决策、工具调用及 System Prompt |
 
 
 ## 启动
@@ -31,7 +32,7 @@ cd mcp && uvicorn server:app --port 9001 --reload
 
 | 触发关键词 | 来源 | 技术指导价值 | 核心 URL |
 |------------|------|--------------|----------|
-| `hermes`, `orchestrator`, `多智能体` | **Hermes Agent** | 指导主从 Agent 路由架构、状态打断注入以及 `<tool_call>` 的实现。 | [Link](https://hermes-agent.nousresearch.com/) |
+| `hermes`, `多智能体` | **Hermes Agent** | 指导主从 Agent 路由架构、状态打断注入以及 `<tool_call>` 的实现。 | [Link](https://hermes-agent.nousresearch.com/) |
 | `skill`, `agent skills`, `原子工具` | **Agent Skills** | 遵循开放式 Skill 规范，指导 `skill-name/SKILL.md` 的文件夹结构与原子化封装。 | [Link](https://github.com/anthropics/anthropic-agent-sdk) |
 
 ---
@@ -42,8 +43,6 @@ cd mcp && uvicorn server:app --port 9001 --reload
 |------|------|
 | [spec.md](spec.md) | 工具接口、数据 Schema、决策流完整契约 ([文件结构](spec.md#文件结构-file-structure)) |
 | `agents/` | 核心逻辑层 |
-| ├── `orchestrator.py` | 主 Agent (Orchestrator)，负责意图识别与任务调度 |
-| ├── `assessment_agent.py` | 子 Agent (Assessment)，负责具体的副作用多轮评估 |
 | ├── `tools/` | 程序化工具层 (包含 `skill_tools`, `orchestrator_tools` 等) |
 | ├── `skills/` | 声明式技能层 (L1 Skill，按症状分类的 `SKILL.md` SOP文件) |
 | └── `memory/` | 记忆层 (分层存储：T2短对话, T1摘要, T0向量索引) |
