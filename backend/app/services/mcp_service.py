@@ -5,7 +5,7 @@ from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
-MCP_URL = os.getenv("MCP_URL", "http://localhost:9001")
+MCP_URL = os.getenv("MCP_URL", "http://127.0.0.1:9001")
 
 def evaluate_symptoms(user_input: str, session_id: str) -> Dict[str, Any]:
     """

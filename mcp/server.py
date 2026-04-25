@@ -132,13 +132,30 @@ async def get_session(session_id: str):
                     'session_id': session_id,
                     'timestamp': m['timestamp']
                 })
+                
+                summary = "暂无总结"
                 if detail_res.get('status') == 'success':
                     mem_content = detail_res.get('content', '')
+                    # Remove frontmatter if present
+                    if mem_content.startswith('---'):
+                        parts = mem_content.split('---', 2)
+                        if len(parts) >= 3:
+                            body = parts[2].strip()
+                        else:
+                            body = mem_content
+                    else:
+                        body = mem_content
+                    
+                    # Extract summary (usually the line after the title)
+                    body_lines = [l for l in body.split('\n') if l.strip()]
+                    if len(body_lines) > 1:
+                        summary = body_lines[1].strip()
+                    
                     context_parts.append(f"### {m['title']} ({m['timestamp']})\n{mem_content}")
                 
                 memories.append(MemoryItem(
                     clue=m['title'],
-                    summary=m.get('summary', '暂无总结'), # ReadMemoryList doesn't return summary, but we could fetch it if needed
+                    summary=summary,
                     learned=m.get('learned', False)
                 ))
                 

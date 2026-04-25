@@ -23,6 +23,11 @@
 source .venv/bin/activate
 uv run python mcp/agent.py
 ```
+```bash
+# 运行 MCP
+export PYTHONPATH=$PYTHONPATH:.
+uv run python mcp/server.py
+```
 
 ## 导航
 

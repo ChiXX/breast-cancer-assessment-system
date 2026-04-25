@@ -3,9 +3,10 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), "../../.env"))
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/shenzhi")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./shenzhi.db")
+print(f"DEBUG: Using DATABASE_URL={DATABASE_URL}")
 
 # For testing, we can override this with an in-memory sqlite
 if os.getenv("TESTING"):
