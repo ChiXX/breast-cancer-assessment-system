@@ -71,7 +71,7 @@ class MedicalMaster:
         # Define the system prompt for the master agent
         self.system_prompt = (
             "你是一个专业的医疗服务中控（客服）。你的职责是作为患者与医疗专家系统之间的桥梁，负责初步接待、意图识别和资源调度。\n"
-            "每次对话开始时，你应当调用 'read_memory_list' 获取当前会话的历史记忆，并根据需要调用 'read_memory_detail' 了解上下文。\n"
+            "每次对话开始时，你应当根据输入的 [Session ID] 调用 'read_memory_list' 或通过过滤逻辑找到当前会话的历史线索，并根据需要调用 'read_memory_detail' 了解上下文。\n"
             "以下是系统中可用的专家工具与评估技能：\n"
             "## 专家工具\n"
             f"- RAG_Expert: {self.rag_expert.description}\n\n"
@@ -86,7 +86,8 @@ class MedicalMaster:
             "   - **Secondary: Memory**: 如果 Skills 未命中，检查【未学习的历史记忆】。如果匹配，调用 'read_memory_detail' 查阅详情。\n"
             "   - **Last Resort: RAG**: 若以上均无匹配，调用 'RAG_Expert' 获取最新指南。\n"
             "3. **服务态度**：态度专业且亲切，内容必须极致简洁。每次回复只准提一个最核心的问题，追问总数不超 2 次。\n"
-            "4. **结构化回答硬约束 (IMPORTANT)**：当你转达来自 RAG_Expert 或 Skills 的评估结果时，**必须严格按照以下四个部分进行结构化回复**，严禁改动标题：\n"
+            "4. **记忆维护 (IMPORTANT)**：当评估得出结论（给出风险等级）或对话即将结束时，**你必须立即调用 'create_memory' 工具**。请确保在给出最终回复之前或与之同时完成工具调用。使用当前输入的 [Session ID]。\n"
+            "5. **结构化回答硬约束 (IMPORTANT)**：当你转达来自 RAG_Expert 或 Skills 的评估结果时，**必须严格按照以下四个部分进行结构化回复**，严禁改动标题：\n"
             "   - **风险等级**：[标注风险级别]\n"
             "   - **下一步建议**：[具体的处置指导与生活护理建议]\n"
             "   - **是否建议联系团队**：[是/否]\n"
@@ -100,6 +101,7 @@ class MedicalMaster:
             'RAG_Expert',
             'read_memory_list',
             'read_memory_detail',
+            'create_memory',
             'resolve_skill_references'
         ]
         
@@ -132,7 +134,7 @@ class MedicalMaster:
             yield chunk
 
     @traceable(name="MedicalMaster Sync Response")
-    def chat(self, user_input: str, history: Optional[List[dict]] = None) -> str:
+    def chat(self, user_input: str, session_id: str = "default_session", history: Optional[List[dict]] = None) -> str:
         """
         A synchronous helper for non-streaming interaction.
         """
@@ -144,10 +146,12 @@ class MedicalMaster:
             return self.learning_agent.run(force=True)
             
         # 2. 自动检查学习 (静默执行或返回提示)
-        # 这里我们简单地在每次对话前检查一下
         self.learning_agent.run()
 
-        history.append({'role': 'user', 'content': user_input})
+        # Add session information to the first user message or as a system hint
+        # We can prepend it to the current input to ensure the agent knows the session_id for tools
+        context_input = f"[Session ID: {session_id}]\n{user_input}"
+        history.append({'role': 'user', 'content': context_input})
         
         responses = []
         for chunk in self.run(history):
