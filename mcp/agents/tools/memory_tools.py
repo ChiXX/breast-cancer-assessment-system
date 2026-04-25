@@ -2,7 +2,8 @@ import os
 import json
 import time
 import datetime
-from typing import Union, List
+import yaml
+from typing import Union, List, Optional
 from qwen_agent.tools.base import BaseTool, register_tool
 from langsmith import traceable
 
@@ -18,12 +19,25 @@ class ReadMemoryList(BaseTool):
     description = '获取所有历史记忆线索，返回包含会话ID、时间戳和精简标题的列表。'
     parameters = {
         'type': 'object',
-        'properties': {},
+        'properties': {
+            'learned': {
+                'type': 'boolean',
+                'description': '是否只获取已学习(true)或未学习(false)的记忆。不传则获取全部。'
+            }
+        },
         'required': []
     }
 
     @traceable(name="Read Memory List")
     def call(self, params: Union[str, dict], **kwargs):
+        if isinstance(params, str):
+            try:
+                params = json.loads(params)
+            except json.JSONDecodeError:
+                params = {}
+        
+        filter_learned = params.get('learned')
+        
         if not os.path.exists(MEMORY_DIR):
             return {'status': 'success', 'memories': []}
             
@@ -37,13 +51,34 @@ class ReadMemoryList(BaseTool):
                 if filename.endswith('.md'):
                     file_path = os.path.join(session_dir, filename)
                     timestamp = filename.replace('.md', '')
+                    
                     with open(file_path, 'r', encoding='utf-8') as f:
-                        first_line = f.readline().strip()
-                        title = first_line.lstrip('#').strip() if first_line.startswith('#') else 'No Title'
+                        content = f.read()
+                    
+                    # 解析 Frontmatter
+                    learned = False
+                    body = content
+                    if content.startswith('---'):
+                        parts = content.split('---', 2)
+                        if len(parts) >= 3:
+                            try:
+                                metadata = yaml.safe_load(parts[1])
+                                learned = metadata.get('learned', False)
+                                body = parts[2].strip()
+                            except Exception:
+                                pass
+                    
+                    if filter_learned is not None and learned != filter_learned:
+                        continue
+                        
+                    first_line = body.split('\n')[0].strip()
+                    title = first_line.lstrip('#').strip() if first_line.startswith('#') else 'No Title'
+                    
                     memories.append({
                         'session_id': session_dir_name,
                         'timestamp': timestamp, 
-                        'title': title
+                        'title': title,
+                        'learned': learned
                     })
         
         return {'status': 'success', 'memories': memories}
@@ -132,12 +167,19 @@ class CreateMemory(BaseTool):
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         file_path = os.path.join(session_dir, f"{timestamp}.md")
         
-        content = f"# {title}\n{summary}\n\n---\n{full_conversation}"
+        # 使用 YAML Frontmatter 标记 learned 状态
+        frontmatter = {
+            'learned': False,
+            'created_at': datetime.datetime.now().isoformat()
+        }
+        
+        content = f"---\n{yaml.dump(frontmatter)}---\n\n# {title}\n{summary}\n\n---\n{full_conversation}"
         
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(content)
             
         return {'status': 'success', 'timestamp': timestamp, 'path': file_path}
+
 
 @register_tool('summarize_memory')
 class SummarizeMemoryTool(BaseTool):
@@ -167,7 +209,14 @@ class SummarizeMemoryTool(BaseTool):
                     with open(file_path, 'r', encoding='utf-8') as f:
                         content = f.read()
                         
-                    parts = content.split('---', 1)
+                    # 解析 Frontmatter 去掉标题前的 YAML
+                    body = content
+                    if content.startswith('---'):
+                        parts = content.split('---', 2)
+                        if len(parts) >= 3:
+                            body = parts[2].strip()
+                            
+                    parts = body.split('---', 1)
                     header = parts[0].strip()
                     memories.append(f"[会话: {session_dir_name} | 时间: {timestamp}]\n{header}")
                     

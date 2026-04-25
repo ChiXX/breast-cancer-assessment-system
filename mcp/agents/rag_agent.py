@@ -41,7 +41,8 @@ class RAGAgent:
         """
         Run the RAG agent with messages.
         """
-        return self.agent.run(messages)
+        for chunk in self.agent.run(messages):
+            yield chunk
 
     @traceable(name="RAGAgent Chat")
     def chat(self, user_input: str) -> str:

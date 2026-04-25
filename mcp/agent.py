@@ -5,6 +5,10 @@ from dotenv import load_dotenv
 # Load environment variables from .env before importing other modules
 load_dotenv()
 
+import sys
+# Ensure the project root is in sys.path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from mcp.agents.master import MedicalMaster
 from mcp.agents.memory_agent import MemoryAgent
 import mcp.agents.tools.skill_tools
@@ -54,6 +58,14 @@ async def run_tui():
                 print("Summarizing all memories for this session...")
                 result = memory_agent.summarize_all(session_id)
                 print(f"[Memory Agent]: {result}")
+                continue
+            
+            if user_input.lower() == '/learn':
+                print("Triggering Learning Agent to distill knowledge...")
+                # We can call master.chat or master.learning_agent.run directly
+                # To be consistent with master's logic, let's call chat or replicate the logic
+                result = master.learning_agent.run(force=True)
+                print(f"\n[Learning Agent]: {result}")
                 continue
             
             # Add user message to history

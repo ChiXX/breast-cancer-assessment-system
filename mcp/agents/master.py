@@ -7,6 +7,8 @@ from langsmith import traceable
 import dashscope
 from mcp.agents.tools import get_all_skill_metadata
 from mcp.agents.rag_agent import RAGAgent
+from mcp.agents.learning_agent import LearningAgent
+from mcp.agents.config import MASTER_MODEL, get_llm_cfg
 
 class MedicalMaster:
     """
@@ -14,20 +16,13 @@ class MedicalMaster:
     Uses qwen-agent Router framework and integrates LangSmith for tracing.
     """
     
-    def __init__(self, model_type: str = 'qwen3.5-plus', name: str = 'Medical Assistant'):
+    def __init__(self, model_type: str = MASTER_MODEL, name: str = 'Medical Assistant'):
         dashscope.api_key = os.getenv('DASHSCOPE_API_KEY')
-        self.llm_cfg = {
-            'model': model_type,
-            'model_server': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-            'api_key': dashscope.api_key,
-            'generate_cfg': {
-                'top_p': 0.8,
-                'temperature': 0.7
-            }
-        }
+        self.llm_cfg = get_llm_cfg(model_type)
         
         # Initialize sub-agents
         self.rag_expert = RAGAgent(llm_cfg=self.llm_cfg)
+        self.learning_agent = LearningAgent(llm_cfg=self.llm_cfg)
         
         # Define a wrapper tool for RAG_Expert to make it more reliable for the Assistant
         rag_expert_instance = self.rag_expert
@@ -62,16 +57,16 @@ class MedicalMaster:
         skills_metadata = get_all_skill_metadata()
         skills_info = "\n".join([f"- {m.get('name')}: {m.get('description')}" for m in skills_metadata])
         
-        # Load historical memory clues (Shared across all sessions)
-        historical_memory_text = "暂无历史记忆。"
+        # Load unlearned historical memory clues (Shared across all sessions)
+        historical_memory_text = "暂无未学习的历史记忆线索。"
         from mcp.agents.tools.memory_tools import ReadMemoryList
         memory_list_tool = ReadMemoryList()
-        res = memory_list_tool.call({})
+        res = memory_list_tool.call({'learned': False})
         if res.get('status') == 'success' and res.get('memories'):
             clues = []
             for mem in res['memories']:
                 clues.append(f"- 时间: {mem['timestamp']} | 会话: {mem['session_id']} | 标题: {mem['title']}")
-            historical_memory_text = "以下为已有历史记忆档案的线索：\n" + "\n".join(clues) + "\n\n(提示：请根据上述线索，通过调用 'read_memory_detail' 工具并提供对应的 session_id 和 timestamp 获取详细记录。)"
+            historical_memory_text = "以下为尚未提炼为技能的最近记忆线索（未学习）：\n" + "\n".join(clues) + "\n\n(提示：请优先参考 Skills 库。如果匹配不到，再查阅这些最近记忆。)"
                 
         # Define the system prompt for the master agent
         self.system_prompt = (
@@ -86,9 +81,17 @@ class MedicalMaster:
             f"{historical_memory_text}\n\n"
             "工作准则：\n"
             "1. **中控定位**：你不是医生，严禁直接给出医疗建议。你的任务是合理调度工具与记忆资源。\n"
-            "2. **记忆优先与工具调用**：只要用户提到症状，**首先**检查【历史记忆】。如果历史记忆中已有该症状相关的可参考回答或评估，你可以优先复用该记忆或调用 'read_memory_detail' 查阅详情，而无需重复调用 'RAG_Expert'。如果记忆中没有相关内容，你必须立即调用 'RAG_Expert'。若信息依然缺失，再配合 'read_skill' 查看手册进行极简追问。\n"
+            "2. **检索优先级 (CRITICAL)**：\n"
+            "   - **Top Priority: Skills**: 首先检查【评估技能】库。如果匹配，直接参考其手册（read_skill）回答。\n"
+            "   - **Secondary: Memory**: 如果 Skills 未命中，检查【未学习的历史记忆】。如果匹配，调用 'read_memory_detail' 查阅详情。\n"
+            "   - **Last Resort: RAG**: 若以上均无匹配，调用 'RAG_Expert' 获取最新指南。\n"
             "3. **服务态度**：态度专业且亲切，内容必须极致简洁。每次回复只准提一个最核心的问题，追问总数不超 2 次。\n"
-            "4. **信息汇总**：作为中控，你应将评估结果（无论是来自 'RAG_Expert' 还是【历史记忆】）**原样转达**给用户，严禁改动其格式或核心内容（如风险等级、ID等）。你只需在前面添加简洁的开场白，或在末尾进行必要的补充提醒。"
+            "4. **结构化回答硬约束 (IMPORTANT)**：当你转达来自 RAG_Expert 或 Skills 的评估结果时，**必须严格按照以下四个部分进行结构化回复**，严禁改动标题：\n"
+            "   - **风险等级**：[标注风险级别]\n"
+            "   - **下一步建议**：[具体的处置指导与生活护理建议]\n"
+            "   - **是否建议联系团队**：[是/否]\n"
+            "   - **参考依据和说明**：[简述指南标准、判断逻辑及参考 ID]\n"
+            "   (如果是日常寒暄或追问，则无需遵循此四部分结构)"
         )
         
         # Tools to be used by the Assistant
@@ -96,7 +99,8 @@ class MedicalMaster:
             'read_skill',
             'RAG_Expert',
             'read_memory_list',
-            'read_memory_detail'
+            'read_memory_detail',
+            'resolve_skill_references'
         ]
         
         # Initialize the underlying Qwen Assistant
@@ -113,8 +117,19 @@ class MedicalMaster:
         Run the agent with the given message history.
         Returns a generator for streaming responses.
         """
-        # qwen-agent's run method returns a generator
-        return self.agent.run(messages)
+        # 在 LangSmith 中注入系统提示词和工具元数据，提高监控可见性
+        from langsmith import get_current_run_tree
+        run_tree = get_current_run_tree()
+        if run_tree:
+            run_tree.metadata.update({
+                "system_prompt": self.system_prompt,
+                "tools": self.tools,
+                "model": self.llm_cfg.get('model')
+            })
+            
+        # Change from return to yield loop so @traceable can capture the generator output
+        for chunk in self.agent.run(messages):
+            yield chunk
 
     @traceable(name="MedicalMaster Sync Response")
     def chat(self, user_input: str, history: Optional[List[dict]] = None) -> str:
@@ -124,6 +139,14 @@ class MedicalMaster:
         if history is None:
             history = []
         
+        # 1. 检查是否触发手动学习
+        if user_input.strip() == "/learn":
+            return self.learning_agent.run(force=True)
+            
+        # 2. 自动检查学习 (静默执行或返回提示)
+        # 这里我们简单地在每次对话前检查一下
+        self.learning_agent.run()
+
         history.append({'role': 'user', 'content': user_input})
         
         responses = []
@@ -131,8 +154,6 @@ class MedicalMaster:
             responses.append(chunk)
         
         if responses:
-            # The last chunk in Assistant.run usually contains the final response
-            # Format depends on qwen-agent version, but typically it's a list of messages
             last_msg = responses[-1]
             if isinstance(last_msg, list) and len(last_msg) > 0:
                 return last_msg[-1]['content']

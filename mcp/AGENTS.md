@@ -4,18 +4,17 @@
 
 ## 定位
 
-症状输入 → MedicalMaster (Assistant) 调度 → RAG_Expert (评估) + read_skill (追问) → 结构化建议。
+症状输入 → MedicalMaster (中控) → Skills/Memory (优先检索) → RAG_Expert (保底) → 结构化建议。
 
 ## 核心约束
 
 | 约束 | 规则 |
 |------|------|
-| **中控架构** | 使用 `MedicalMaster` 作为统一入口，禁止跳过中控直接调用专家。 |
-| **强制 RAG** | 只要涉及医疗症状，必须调用 `RAG_Expert`。 |
-| **追问约束** | 单句提问，单点切入，总追问次数严禁超过 2 次。 |
-| **原样转达** | 中控必须完整、原样展示 `RAG_Expert` 的输出（包含风险等级与参考 ID）。 |
-| **无状态** | Agent 实例通过历史消息链维护上下文，不持有本地持久化状态。 |
-| **可观测性** | 强制集成 LangSmith，追踪决策链与工具调用。 |
+| **中控架构** | 使用 `MedicalMaster` 统一调度。优先查阅 `Skills` 字典，次选最近 `Memory`，最后保底 `RAG`。 |
+| **知识闭环** | 零散 Memory 必须经由 `LearningAgent` 提炼为 Skill，且必须通过 `ReviewerAgent` 审计。 |
+| **追问约束** | 单句提问，单点切入，总追问次数严禁超过 2 次。严禁在信息齐全时追问。 |
+| **原样转达** | 中控必须完整、原样展示专家输出（包含风险等级、建议与参考依据）。 |
+| **可观测性** | 强制集成 LangSmith。`MedicalMaster` 必须在 Metadata 中注入 System Prompt。 |
 
 ## 启动
 
@@ -29,12 +28,14 @@ uv run python mcp/agent.py
 
 | 路径 | 说明 |
 |------|------|
-| [spec.md](spec.md) | 架构协议、Agent 职责、工具 Schema |
+| [spec.md](spec.md) | 架构协议、Agent 职责、工具 Schema、检索优先级 |
 | `agents/` | 核心逻辑层 |
-| ├── `master.py` | MedicalMaster (中控/Assistant) |
-| ├── `rag_agent.py` | RAGAgent (专家/Assistant) |
-| ├── `skills/` | 声明式技能层 (包含 `symptom_followup/SKILL.md`) |
-| └── `tools/` | 程序化工具层 (rag_tool.py, skill_tools.py) |
+| ├── `master.py` | MedicalMaster (中控) |
+| ├── `rag_agent.py` | RAGAgent (专家) |
+| ├── `learning_agent.py` | LearningAgent (知识提炼/提速) |
+| ├── `reviewer_agent.py` | ReviewerAgent (合规审计) |
+| ├── `memory_agent.py` | MemoryAgent (记忆持久化) |
+| ├── `skills/` | 声明式技能层 (症状-风险映射字典) |
+| └── `tools/` | 程序化工具层 (rag_tool.py, skill_tools.py, etc.) |
 | `data/` | 知识库与 FAISS 索引目录 |
 | `agent.py` | TUI 交互入口 |
-| `../.env` | API Key 配置 |
