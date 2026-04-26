@@ -9,6 +9,7 @@ from mcp.agents.tools import get_all_skill_metadata
 from mcp.agents.rag_agent import RAGAgent
 from mcp.agents.learning_agent import LearningAgent
 from mcp.agents.config import MASTER_MODEL, get_llm_cfg
+from mcp.agents.tools.history_tools import ReadFullHistory
 
 class MedicalMaster:
     """
@@ -26,32 +27,34 @@ class MedicalMaster:
         
         # Define a wrapper tool for RAG_Expert to make it more reliable for the Assistant
         rag_expert_instance = self.rag_expert
-        @register_tool('RAG_Expert')
-        class RAGExpertTool(BaseTool):
-            description = '医疗知识专家，负责查询指南和提供专业建议。当用户提到症状时必须调用。'
-            parameters = {
-                'type': 'object',
-                'properties': {
-                    'query': {
-                        'type': 'string',
-                        'description': '需要查询的症状或问题描述'
-                    }
-                },
-                'required': ['query']
-            }
+        from qwen_agent.tools.base import TOOL_REGISTRY
+        if 'RAG_Expert' not in TOOL_REGISTRY:
+            @register_tool('RAG_Expert')
+            class RAGExpertTool(BaseTool):
+                description = '医疗知识专家，负责查询指南和提供专业建议。当用户提到症状时必须调用。'
+                parameters = {
+                    'type': 'object',
+                    'properties': {
+                        'query': {
+                            'type': 'string',
+                            'description': '需要查询的症状或问题描述'
+                        }
+                    },
+                    'required': ['query']
+                }
 
-            def call(self, params: Union[str, dict], **kwargs) -> str:
-                if isinstance(params, str):
-                    try:
-                        params = json.loads(params)
-                    except json.JSONDecodeError:
-                        query = params
+                def call(self, params: Union[str, dict], **kwargs) -> str:
+                    if isinstance(params, str):
+                        try:
+                            params = json.loads(params)
+                        except json.JSONDecodeError:
+                            query = params
+                        else:
+                            query = params.get('query', params)
                     else:
-                        query = params.get('query', params)
-                else:
-                    query = params.get('query', '')
-                # Call the agent synchronously
-                return rag_expert_instance.chat(query)
+                        query = params.get('query', '')
+                    # Call the agent synchronously
+                    return rag_expert_instance.chat(query)
 
         # Load all skill metadata for system prompt
         skills_metadata = get_all_skill_metadata()
@@ -65,44 +68,81 @@ class MedicalMaster:
         if res.get('status') == 'success' and res.get('memories'):
             clues = []
             for mem in res['memories']:
-                clues.append(f"- 时间: {mem['timestamp']} | 会话: {mem['session_id']} | 标题: {mem['title']}")
-            historical_memory_text = "以下为尚未提炼为技能的最近记忆线索（未学习）：\n" + "\n".join(clues) + "\n\n(提示：请优先参考 Skills 库。如果匹配不到，再查阅这些最近记忆。)"
+                assessment = mem.get('assessment', {})
+                risk_info = f" | 风险: {assessment.get('risk_level', '未知')}" if assessment else ""
+                assessment_json = json.dumps(assessment, ensure_ascii=False) if assessment else "{}"
+                clues.append(f"- 时间: {mem['timestamp']} | 会话: {mem['session_id']} | 标题: {mem['title']}{risk_info}\n  总结: {mem['summary']}\n  评估数据: {assessment_json}")
+            historical_memory_text = "以下为尚未提炼为技能的最近记忆线索（未学习）：\n" + "\n".join(clues) + "\n\n(提示：请优先参考 Skills 库。如果匹配不到，可以直接参考这些包含完整评估数据（评估数据字段）的最近记忆。如果这些简要信息不足，请调用 read_memory_detail 获取详情。)"
                 
-        # Define the system prompt for the master agent
+        from mcp.agents.schemas import RiskLevel, ActionRequired, CTCAEGrade
+        risk_levels = ", ".join([f"'{level.value}'" for level in RiskLevel if level != RiskLevel.UNKNOWN])
+        actions = ", ".join([f"'{action.value}'" for action in ActionRequired])
+        grades = ", ".join([f"'{grade.value}'" for grade in CTCAEGrade])
+        
         self.system_prompt = (
-            "你是一个专业的医疗服务中控（客服）。你的职责是作为患者与医疗专家系统之间的桥梁，负责初步接待、意图识别和资源调度。\n"
-            "每次对话开始时，你应当根据输入的 [Session ID] 调用 'read_memory_list' 或通过过滤逻辑找到当前会话的历史线索，并根据需要调用 'read_memory_detail' 了解上下文。\n"
-            "以下是系统中可用的专家工具与评估技能：\n"
-            "## 专家工具\n"
-            f"- RAG_Expert: {self.rag_expert.description}\n\n"
-            "## 评估技能\n"
+            "你是一个高度专业的乳腺癌副作用评估系统。你负责通过对话收集患者症状，并在信息充分时提供基于指南的评估。\n\n"
+            "以下是系统中可用的评估资源：\n"
+            "## 评估技能（Skills）\n"
             f"{skills_info}\n\n"
-            "## 历史记忆\n"
+            "## 历史记忆（Memory）\n"
             f"{historical_memory_text}\n\n"
-            "工作准则：\n"
-            "1. **中控定位**：你不是医生，严禁直接给出医疗建议。你的任务是合理调度工具与记忆资源。\n"
-            "2. **检索优先级 (CRITICAL)**：\n"
-            "   - **Top Priority: Skills**: 首先检查【评估技能】库。如果匹配，直接参考其手册（read_skill）回答。\n"
-            "   - **Secondary: Memory**: 如果 Skills 未命中，检查【未学习的历史记忆】。如果匹配，调用 'read_memory_detail' 查阅详情。\n"
-            "   - **Last Resort: RAG**: 若以上均无匹配，调用 'RAG_Expert' 获取最新指南。\n"
-            "3. **服务态度**：态度专业且亲切，内容必须极致简洁。每次回复只准提一个最核心的问题，追问总数不超 2 次。\n"
-            "4. **记忆维护 (IMPORTANT)**：当评估得出结论（给出风险等级）或对话即将结束时，**你必须立即调用 'create_memory' 工具**。请确保在给出最终回复之前或与之同时完成工具调用。使用当前输入的 [Session ID]。\n"
-            "5. **结构化回答硬约束 (IMPORTANT)**：当你转达来自 RAG_Expert 或 Skills 的评估结果时，**必须严格按照以下四个部分进行结构化回复**，严禁改动标题：\n"
-            "   - **风险等级**：[标注风险级别]\n"
-            "   - **下一步建议**：[具体的处置指导与生活护理建议]\n"
-            "   - **是否建议联系团队**：[是/否]\n"
-            "   - **参考依据和说明**：[简述指南标准、判断逻辑及参考 ID]\n"
-            "   (如果是日常寒暄或追问，则无需遵循此四部分结构)"
+            "### 【核心任务】\n"
+            "1. **信息收集**：如果患者描述不全，请进行追问（question）。追问必须简单明了，字数限制在50字以内。最多只允许追问两次。如果追问两次后信息仍不全，请基于现有信息给出初步评估或引导就医。\n"
+            "2. **专业评估**：一旦信息充足，必须通过调用技能库、检索历史记忆（Memory）或使用 `RAG_Expert` 获取指南依据。\n"
+            "   - **【强制要求】**：如果工具返回了完整的评估 JSON（包含 risk_level, action_required 等），你**必须原封不动**地将其放入输出 JSON 的 `data` 字段中。严禁修改任何字段值（如 Grade 或风险等级）。\n"
+            "   - 你只需根据评估结果，在 `display_text` 中提供一段自然语言的开场白或简述即可。\n\n"
+            "### 【风险分级与行动映射参考】\n"
+            "（用于追问决策参考，最终输出以工具返回为准）：\n"
+            "1. **高风险 (HIGH)** + **立即线下就医** + **Grade 1**\n"
+            "2. **高风险 (HIGH)** + **24小时内联系团队** + **Grade 2**\n"
+            "3. **中风险 (MEDIUM)** + **联系团队** + **Grade 3**\n"
+            "4. **中风险 (MEDIUM)** + **密切观察** + **Grade 4**\n"
+            "5. **低风险 (LOW)** + **继续观察与记录** + **Grade 5**\n\n"
+            "### 【工作准则】\n"
+            "1. **中控定位**：你的任务是合理调度工具与资源。你是评估流程的组织者，而不是决策的修改者。\n"
+            "2. **检索优先级**：Skills > Memory > RAG_Expert。\n"
+            "3. **最终回复格式 (HARD REQUIREMENT)**：当你准备好向用户（患者）进行【追问】或提供【评估结果】时，你**必须且只能**以 JSON 格式返回。严禁在 JSON 块之外添加任何解释文字。\n\n"
+            "注意：在调用工具（如 RAG_Expert, read_skill 等）的过程中，请遵循标准的 Action/Action Input 流程，不要将工具调用包装在上述 JSON 格式中。"
+            "### 【输出协议】\n"
+            "1. **必须包含 `type` 字段**，值只能是 `evaluation` 或 `question`。\n"
+            "2. **如果是 `evaluation`**：\n"
+            "   - 必须包含 `data` 对象（直接复用工具返回的评估 JSON）。\n"
+            "   - 必须包含 `display_text` 字符串。\n"
+            "3. **如果是 `question`**：\n"
+            "   - 必须包含 `content` 字符串，即你对患者的追问内容。\n\n"
+            "### 输出示例 (Evaluation):\n"
+            "```json\n"
+            "{\n"
+            "  \"type\": \"evaluation\",\n"
+            "  \"display_text\": \"根据您的描述，我们为您整理了以下评估结果：\",\n"
+            "  \"data\": {\n"
+            "    \"risk_level\": \"HIGH\",\n"
+            "    \"action_required\": \"立即线下就医\",\n"
+            "    \"ctcae_grade\": \"Grade 1\",\n"
+            "    \"advice\": \"建议立即前往最近的急诊科...\",\n"
+            "    \"contact_team\": true,\n"
+            "    \"evidence\": \"符合 CTCAE v5.0 发热性中性粒细胞减少标准...\",\n"
+            "    \"rule_id\": \"QA-H-001\"\n"
+            "  }\n"
+            "}\n"
+            "```\n\n"
+            "### 输出示例 (Question):\n"
+            "```json\n"
+            "{\n"
+            "  \"type\": \"question\",\n"
+            "  \"content\": \"请问您的手麻症状是在化疗后多久出现的？\"\n"
+            "}\n"
+            "```"
         )
         
         # Tools to be used by the Assistant
         self.tools = [
             'read_skill',
-            'RAG_Expert',
+            'resolve_skill_references',
             'read_memory_list',
             'read_memory_detail',
-            'create_memory',
-            'resolve_skill_references'
+            'read_full_history',
+            'RAG_Expert',
         ]
         
         # Initialize the underlying Qwen Assistant
@@ -145,23 +185,25 @@ class MedicalMaster:
         if user_input.strip() == "/learn":
             return self.learning_agent.run(force=True)
             
-        # 2. 自动检查学习 (静默执行或返回提示)
-        self.learning_agent.run()
-
         # Add session information to the first user message or as a system hint
         # We can prepend it to the current input to ensure the agent knows the session_id for tools
         context_input = f"[Session ID: {session_id}]\n{user_input}"
         history.append({'role': 'user', 'content': context_input})
         
+        print(f"DEBUG: Calling agent with {len(history)} messages")
         responses = []
         for chunk in self.run(history):
             responses.append(chunk)
         
         if responses:
             last_msg = responses[-1]
+            content = ""
             if isinstance(last_msg, list) and len(last_msg) > 0:
-                return last_msg[-1]['content']
+                content = last_msg[-1].get('content', '')
             elif isinstance(last_msg, dict):
-                return last_msg.get('content', '')
+                content = last_msg.get('content', '')
+            
+            print(f"DEBUG: Agent raw output: {content[:100]}...")
+            return content if content else "抱歉，我暂时无法处理您的请求。"
         
         return "抱歉，我暂时无法处理您的请求。"

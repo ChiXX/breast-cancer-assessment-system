@@ -2,6 +2,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.app.api.v1 import api_v1_router
 from backend.app.database import engine, Base
+# Import all models to register them with Base.metadata
+from backend.app.models.assessment import Assessment
+from backend.app.models.contact_request import ContactRequest
+from backend.app.models.event import EventLog
+from backend.app.models.history_dialogue import HistoryDialogue
 
 # Initialize Database
 Base.metadata.create_all(bind=engine)

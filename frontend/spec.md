@@ -16,22 +16,29 @@
 
 | 路径 | 页面组件 | 核心功能 |
 | :--- | :--- | :--- |
-| `/` | `InputPage` | 症状输入、Session 初始化、埋点上报 |
-| `/result/:id` | `ResultPage` | 风险分级展示（红/黄/绿）、动态处置建议、依据追溯 |
-| `/history` | `HistoryPage` | 历史记录列表、风险状态摘要、回溯详情入口 |
+| `/` | `ChatPage` | 对话式症状输入、多轮追问、实时风险评估展示 |
+| `/result/:id` | `ResultPage` | (Legacy/Detail) 风险分级详细展示 |
+| `/history` | `HistoryPage` | 历史记录列表 |
 
 ## 3. 核心组件实现 (Component Details)
 
 ### 3.1 视觉规范 (Aesthetics)
-- **Premium UI**: 采用玻璃拟态 (Glassmorphism) 导航栏，配合 HSL 动态渐变风险 Banner。
-- **响应式**: 适配移动端与桌面端，最大容器宽度 640px (max-w-2xl)。
-- **微动效**: 实现 `animate-fade-in` 入场动画及按钮 Hover 缩放效果。
+- **Chat UI**: 气泡式对话流，用户消息靠右，AI 消息靠左。
+- **Auto-scroll**: 对话更新时自动滚动到底部。
+- **Inline Results**: 当 AI 返回明确风险等级（非“未知”）时，在对话流中紧随 AI 回复展示 `RiskBanner` 与 `AdviceCard`。
 
 ### 3.2 业务组件
-- **`RiskBanner`**: 自动映射后端 `risk_level`，动态切换渐变色背景与图标。
-- **`AdviceCard`**: 结构化展示处置建议，支持 `contact_team` 逻辑触发协同按钮。
-- **`EvidenceAccordion`**: 展示审计依据，包含规则 ID 与系统版本号。
-- **`HistoryList`**: 时间轴样式的评估记录列表，支持风险标识摘要。
+- **`ChatMessage`**: 对话气泡组件，支持 Markdown 渲染。
+- **`ChatInput`**: 支持多行输入、快捷发送及发送状态反馈。**当显示评估结果时，输入框变为 disabled 状态。**
+- **`RiskBanner`**: 自动映射后端 `risk_level`, `action_required` 和 `ctcae_grade`：
+  - **红色 (Grade 1)**: 立即线下就医 -> 展示“拨打 120”或“联系急诊”按钮。
+  - **橙色 (Grade 2)**: 24小时内联系团队 -> 展示“预约医生”按钮。
+  - **黄色 (Grade 3)**: 联系团队 -> 展示“在线咨询”按钮。
+  - **蓝色 (Grade 4)**: 密切观察 -> 展示“添加观察日志”按钮。
+  - **绿色 (Grade 5)**: 继续观察与记录 -> 展示“完成记录”按钮。
+- **`AssessmentActions`**: 结果展示时出现的附加按钮：
+  - **结束回答**: 提交最终评估结果并存入历史对话。
+  - **我要补充**: 重新启用输入框，继续对话。
 
 ## 4. API 交互与代理 (Networking)
 
@@ -39,9 +46,10 @@
 所有以 `/api` 开头的请求均通过 Vite 转发至 `http://127.0.0.1:8000`，有效解决跨域 (CORS) 并简化了部署环境下的端口转发需求。
 
 ### 4.2 接口映射
-- `POST /api/v1/assessments`: 提交评估数据。
+- `POST /api/v1/assessments`: 提交评估数据以获取实时反馈。
+- `POST /api/v1/assessments/save`: 最终提交评估结果与全量历史对话。
 - `GET /api/v1/assessments/{id}`: 获取详情。
-- `GET /api/v1/assessments?session_id=...`: 获取会话历史。
+- `GET /api/v1/history?session_id=...`: 获取该 session 的最新全量历史对话。
 - `POST /api/v1/events`: 埋点事件上报。
 
 ## 5. 可观测性 (Observability)

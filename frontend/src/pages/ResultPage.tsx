@@ -3,41 +3,92 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Layout } from '../components/Layout';
 import { assessmentService } from '../services/api';
-import { AlertTriangle, CheckCircle, Info, ArrowLeft, ShieldAlert } from 'lucide-react';
-import type { RiskLevel } from '../types';
+import { AlertTriangle, CheckCircle, Info, ArrowLeft, ShieldAlert, MessageSquare } from 'lucide-react';
 import { logEvent } from '../utils/eventLogger';
 import { EventName } from '../types';
 import { getOrCreateSessionId } from '../utils/session';
 
-const riskConfig = {
-  High: {
-    color: 'bg-red-500',
-    bg: 'bg-red-50',
-    text: 'text-red-700',
-    border: 'border-red-100',
+const riskConfig: Record<string, any> = {
+  'Grade 1': {
+    color: 'bg-rose-500',
+    bg: 'bg-rose-50',
+    text: 'text-rose-700',
+    border: 'border-rose-200',
     icon: ShieldAlert,
-    label: '高风险',
-    gradient: 'from-red-500 to-rose-600'
+    label: '高风险 (Grade 1)',
+    buttonLabel: '紧急拨打 120',
+    gradient: 'from-rose-500 to-red-600',
+    action: '立即线下就医'
   },
-  Medium: {
+  'Grade 2': {
+    color: 'bg-orange-500',
+    bg: 'bg-orange-50',
+    text: 'text-orange-700',
+    border: 'border-orange-200',
+    icon: AlertTriangle,
+    label: '高风险 (Grade 2)',
+    buttonLabel: '预约医生',
+    gradient: 'from-orange-500 to-amber-600',
+    action: '24小时内联系团队'
+  },
+  'Grade 3': {
     color: 'bg-amber-500',
     bg: 'bg-amber-50',
     text: 'text-amber-700',
-    border: 'border-amber-100',
-    icon: AlertTriangle,
-    label: '中风险',
-    gradient: 'from-amber-500 to-orange-600'
+    border: 'border-amber-200',
+    icon: MessageSquare,
+    label: '中风险 (Grade 3)',
+    buttonLabel: '在线咨询',
+    gradient: 'from-amber-500 to-orange-600',
+    action: '联系团队'
   },
-  Low: {
+  'Grade 4': {
+    color: 'bg-sky-500',
+    bg: 'bg-sky-50',
+    text: 'text-sky-700',
+    border: 'border-sky-200',
+    icon: Info,
+    label: '中风险 (Grade 4)',
+    buttonLabel: '添加观察日志',
+    gradient: 'from-sky-500 to-blue-600',
+    action: '密切观察'
+  },
+  'Grade 5': {
     color: 'bg-emerald-500',
     bg: 'bg-emerald-50',
     text: 'text-emerald-700',
-    border: 'border-emerald-100',
+    border: 'border-emerald-200',
     icon: CheckCircle,
-    label: '低风险',
-    gradient: 'from-emerald-500 to-teal-600'
+    label: '低风险 (Grade 5)',
+    buttonLabel: '完成记录',
+    gradient: 'from-emerald-500 to-teal-600',
+    action: '继续观察与记录'
+  },
+  '未知': {
+    color: 'bg-gray-500',
+    bg: 'bg-gray-50',
+    text: 'text-gray-700',
+    border: 'border-gray-100',
+    icon: Info,
+    label: '医学问询',
+    buttonLabel: '联系团队',
+    gradient: 'from-gray-400 to-gray-600',
+    action: '正在分析'
   }
 };
+
+// Aliases for robustness
+riskConfig.HIGH = riskConfig['Grade 1'];
+riskConfig.MEDIUM = riskConfig['Grade 3'];
+riskConfig.LOW = riskConfig['Grade 5'];
+riskConfig.Urgent = riskConfig.HIGH;
+riskConfig.High = riskConfig.HIGH;
+riskConfig.Medium = riskConfig.MEDIUM;
+riskConfig.Low = riskConfig.LOW;
+riskConfig.urgent = riskConfig.HIGH;
+riskConfig.high = riskConfig.HIGH;
+riskConfig.medium = riskConfig.MEDIUM;
+riskConfig.low = riskConfig.LOW;
 
 export default function ResultPage() {
   const { id } = useParams<{ id: string }>();
@@ -87,7 +138,7 @@ export default function ResultPage() {
     );
   }
 
-  const config = riskConfig[data.risk_level as RiskLevel] || riskConfig.Low;
+  const config = riskConfig[data.ctcae_grade || data.risk_level] || riskConfig.Low;
   const Icon = config.icon;
 
   return (
@@ -106,9 +157,19 @@ export default function ResultPage() {
               <div className={`p-3 rounded-2xl bg-white shadow-sm ${config.text}`}>
                 <Icon size={32} />
               </div>
-              <div>
-                <span className={`text-sm font-bold uppercase tracking-wider ${config.text}`}>风险分级</span>
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <span className={`text-sm font-bold uppercase tracking-wider ${config.text}`}>风险分级</span>
+                  {data.ctcae_grade && (
+                    <span className="text-xs px-2 py-0.5 bg-white/50 rounded-full font-bold border border-current/10">
+                      {data.ctcae_grade}
+                    </span>
+                  )}
+                </div>
                 <h2 className={`text-3xl font-black ${config.text}`}>{config.label}</h2>
+                {data.action_required && (
+                   <div className={`text-sm font-bold mt-1 opacity-80 ${config.text}`}>需采取行动：{data.action_required}</div>
+                )}
               </div>
             </div>
             <p className="text-gray-700 leading-relaxed font-medium">
@@ -134,9 +195,9 @@ export default function ResultPage() {
           {data.contact_team && (
             <button 
               onClick={handleContactTeam}
-              className="mt-8 w-full bg-primary text-white font-bold py-4 rounded-2xl shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all"
+              className={`mt-8 w-full ${config.color} text-white font-bold py-4 rounded-2xl shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all`}
             >
-              立即联系医疗团队
+              {config.buttonLabel || '立即联系医疗团队'}
             </button>
           )}
         </div>

@@ -48,38 +48,29 @@ class ReadMemoryList(BaseTool):
                 continue
                 
             for filename in sorted(os.listdir(session_dir)):
-                if filename.endswith('.md'):
+                if filename.endswith('.json'):
                     file_path = os.path.join(session_dir, filename)
-                    timestamp = filename.replace('.md', '')
+                    timestamp = filename.replace('.json', '')
                     
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                    
-                    # 解析 Frontmatter
-                    learned = False
-                    body = content
-                    if content.startswith('---'):
-                        parts = content.split('---', 2)
-                        if len(parts) >= 3:
-                            try:
-                                metadata = yaml.safe_load(parts[1])
-                                learned = metadata.get('learned', False)
-                                body = parts[2].strip()
-                            except Exception:
-                                pass
-                    
-                    if filter_learned is not None and learned != filter_learned:
-                        continue
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
                         
-                    first_line = body.split('\n')[0].strip()
-                    title = first_line.lstrip('#').strip() if first_line.startswith('#') else 'No Title'
-                    
-                    memories.append({
-                        'session_id': session_dir_name,
-                        'timestamp': timestamp, 
-                        'title': title,
-                        'learned': learned
-                    })
+                        learned = data.get('learned', False)
+                        
+                        if filter_learned is not None and learned != filter_learned:
+                            continue
+                            
+                        memories.append({
+                            'session_id': session_dir_name,
+                            'timestamp': timestamp, 
+                            'title': data.get('title', 'No Title'),
+                            'summary': data.get('summary', ''),
+                            'assessment': data.get('assessment', {}),
+                            'learned': learned
+                        })
+                    except Exception as e:
+                        print(f"Error reading memory file {file_path}: {e}")
         
         return {'status': 'success', 'memories': memories}
 
@@ -95,7 +86,7 @@ class ReadMemoryDetail(BaseTool):
             },
             'timestamp': {
                 'type': 'string',
-                'description': '记忆文档的时间戳(文件名，不包含.md)'
+                'description': '记忆文档的时间戳(文件名，不包含.json)'
             }
         },
         'required': ['session_id', 'timestamp']
@@ -112,18 +103,18 @@ class ReadMemoryDetail(BaseTool):
         session_id = params.get('session_id', '')
         timestamp = params.get('timestamp', '')
         
-        file_path = os.path.join(MEMORY_DIR, session_id, f"{timestamp}.md")
+        file_path = os.path.join(MEMORY_DIR, session_id, f"{timestamp}.json")
         if not os.path.exists(file_path):
             return {'status': 'error', 'message': 'Memory not found'}
             
         with open(file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
+            data = json.load(f)
             
-        return {'status': 'success', 'content': content}
+        return {'status': 'success', 'content': json.dumps(data, ensure_ascii=False, indent=2)}
 
 @register_tool('create_memory')
 class CreateMemory(BaseTool):
-    description = '创建一条新的记忆文档。需要提供精简标题、核心一句话总结和完整对话记录。'
+    description = '创建一条新的记忆文档（JSON格式）。需要提供精简标题、核心一句话总结和完整对话记录。'
     parameters = {
         'type': 'object',
         'properties': {
@@ -139,12 +130,12 @@ class CreateMemory(BaseTool):
                 'type': 'string',
                 'description': '一句话极简总结，用于描述核心结论或状态变化，几百字'
             },
-            'full_conversation': {
-                'type': 'string',
-                'description': '全文对话记录'
+            'assessment': {
+                'type': 'object',
+                'description': '完整的评估数据，包含 risk_level, action_required, ctcae_grade, advice, contact_team, evidence, rule_id 等字段。'
             }
         },
-        'required': ['session_id', 'title', 'summary', 'full_conversation']
+        'required': ['session_id', 'title', 'summary']
     }
 
     @traceable(name="Create Memory")
@@ -158,25 +149,24 @@ class CreateMemory(BaseTool):
         session_id = params.get('session_id', '')
         title = params.get('title', '')
         summary = params.get('summary', '')
-        full_conversation = params.get('full_conversation', '')
         
         if not session_id:
             return {'status': 'error', 'message': 'session_id is required'}
             
         session_dir = ensure_memory_dir(session_id)
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        file_path = os.path.join(session_dir, f"{timestamp}.md")
+        file_path = os.path.join(session_dir, f"{timestamp}.json")
         
-        # 使用 YAML Frontmatter 标记 learned 状态
-        frontmatter = {
+        data = {
             'learned': False,
-            'created_at': datetime.datetime.now().isoformat()
+            'created_at': datetime.datetime.now().isoformat(),
+            'title': title,
+            'summary': summary,
+            'assessment': params.get('assessment', {})
         }
         
-        content = f"---\n{yaml.dump(frontmatter)}---\n\n# {title}\n{summary}\n\n---\n{full_conversation}"
-        
         with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(content)
+            json.dump(data, f, ensure_ascii=False, indent=2)
             
         return {'status': 'success', 'timestamp': timestamp, 'path': file_path}
 
@@ -203,22 +193,13 @@ class SummarizeMemoryTool(BaseTool):
                 continue
                 
             for filename in sorted(os.listdir(session_dir)):
-                if filename.endswith('.md'):
+                if filename.endswith('.json'):
                     file_path = os.path.join(session_dir, filename)
-                    timestamp = filename.replace('.md', '')
+                    timestamp = filename.replace('.json', '')
                     with open(file_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                        
-                    # 解析 Frontmatter 去掉标题前的 YAML
-                    body = content
-                    if content.startswith('---'):
-                        parts = content.split('---', 2)
-                        if len(parts) >= 3:
-                            body = parts[2].strip()
-                            
-                    parts = body.split('---', 1)
-                    header = parts[0].strip()
-                    memories.append(f"[会话: {session_dir_name} | 时间: {timestamp}]\n{header}")
+                        data = json.load(f)
+                    
+                    memories.append(f"[会话: {session_dir_name} | 时间: {timestamp}]\n标题: {data.get('title')}\n总结: {data.get('summary')}")
                     
         if not memories:
             return {'status': 'success', 'content': '无历史记忆'}

@@ -21,24 +21,19 @@ class LearningAgent:
         self.system_prompt = (
             "你是一个医疗决策知识提炼专家。你的任务是将散乱的会话记忆（Sessions）提炼为精准、唯一的‘症状-风险映射字典’。\n\n"
             "### 【核心行为准则】\n"
-            "1. **必要性评估 (Necessity)**：并非每次对话都需要提炼知识。只有当对话中包含‘未曾记录的症状’、‘更优的处置逻辑’或‘更细致的风险判定标准’时，才执行更新。如果现有字典已覆盖且逻辑一致，仅标记记忆为已学习即可。\n"
-            "2. **逻辑优选 (Superiority)**：如果新对话中的处置建议或风险判定比现有手册更专业、更符合最新指南或逻辑更严密，应果断更新现有内容。新知识通常具有更高的参考价值。\n"
-            "3. **冲突检查 (Conflict Check)**：在更新前，必须查阅现有 Skill 内容。如果新提炼的知识与旧有条款存在冲突，必须进行消歧处理，确保整个‘医疗决策字典’内部逻辑自洽，严禁出现矛盾的判定标准。\n"
-            "4. **词典化维护与输出规范**：坚持‘单一 Skill (medical_consultation_workflow) + 多子资源 (.md)’的结构。`SKILL.md` 仅作为索引映射。\n"
-            "   - **输出格式约束**：资源文件（如 `fever.md`）中的每一项知识条目（如每个 Grade）必须严格包含以下字段：\n"
+            "1. **必要性评估 (Necessity)**：并非每次对话都需要提炼知识。只有当对话中包含‘未曾记录的症状’、‘更优的处置逻辑’或‘更细致的风险判定标准’时，才执行更新。\n"
+            "2. **逻辑优选 (Superiority)**：如果新对话中的判定更专业，应更新现有内容。\n"
+            "3. **冲突检查 (Conflict Check)**：确保整个‘医疗决策字典’内部逻辑自洽。\n"
+            "4. **词典化维护与输出规范**：坚持‘单一 Skill (medical_consultation_workflow) + 多子资源 (.json)’的结构。`SKILL.json` 仅作为索引映射。\n"
+            "   - **输出格式约束**：资源文件中的内容必须是 JSON 格式。每一项知识条目必须包含以下字段：\n"
             "     - **风险等级**：明确标注（如：低风险 / 中风险 / 高风险 / 危急风险）。\n"
             "     - **下一步建议**：提供具体、可操作的临床处置步骤。\n"
             "     - **是否建议联系团队**：明确回答“是”或“否”。\n"
             "     - **参考依据**：必须提供具体的指南 ID（如 QA-M-005）。\n"
-            "   - **【红线约束】**：如果对话中未提及明确的“参考依据 ID”，则视为该条知识缺乏权威性，**严禁将其生成或记录到字典中**。\n\n"
+            "   - **【红线约束】**：如果对话中未提及明确的“参考依据 ID”，严禁记录到字典中。\n\n"
             "### 【工作流程约束】\n"
-            "- **过滤**：仅提取与‘副作用/并发症’相关的临床知识。剔除一切流程性、交互性或无关的文字。\n"
-            "- **原子化更新**：更新应尽可能针对具体的子资源文件（如 `rash.md`），保持 `SKILL.md` 的索引简洁。\n"
-            "- **闭环**：所有处理过的记忆（无论是否产生知识更新）都必须调用 `mark_memory_learned`。\n\n"
-            "### 【工具链调用规范】\n"
-            "- 先用 `read_skill` 和 `resolve_skill_references` 评估现状。\n"
-            "- 确定有必要更新时，再用 `upsert_skill_resource` 或 `upsert_skill`。\n"
-            "- 最后必须执行 `mark_memory_learned`。"
+            "- **原子化更新**：更新应针对具体的子资源文件（如 `rash.json`）。\n"
+            "- **闭环**：处理完记忆后必须调用 `mark_memory_learned`。"
         )
         
         self.tools = [
@@ -94,7 +89,7 @@ class LearningAgent:
         skill_name = "medical_consultation_workflow"
         skill_dir = os.path.join(os.path.abspath("mcp/agents/skills"), skill_name)
         if os.path.exists(skill_dir):
-            resources = [f for f in os.listdir(skill_dir) if f.endswith('.md')]
+            resources = [f for f in os.listdir(skill_dir) if f.endswith('.json')]
             review_result = self.reviewer.run(skill_name, resources)
             return f"{result_str}\n\n### 【审计报告】\n{review_result}"
             

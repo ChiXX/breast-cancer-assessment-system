@@ -11,10 +11,11 @@ const api = axios.create({
 });
 
 export const assessmentService = {
-  submit: async (userInput: string, sessionId: string): Promise<Assessment> => {
+  submit: async (userInput: string, sessionId: string, history?: {role: string, content: string}[]): Promise<Assessment> => {
     const response = await api.post('/assessments', {
       user_input: userInput,
       session_id: sessionId,
+      history: history,
     });
     return response.data;
   },
@@ -24,9 +25,18 @@ export const assessmentService = {
     return response.data;
   },
 
-  getBySession: async (sessionId: string): Promise<Assessment[]> => {
+  getBySession: async (sessionId: string): Promise<any[]> => {
     const response = await api.get('/assessments', {
       params: { session_id: sessionId }
+    });
+    return response.data;
+  },
+
+  save: async (sessionId: string, assessment: Assessment, history: {role: string, content: string}[]): Promise<Assessment> => {
+    const response = await api.post('/assessments/save', {
+      session_id: sessionId,
+      assessment: assessment,
+      history: history,
     });
     return response.data;
   },

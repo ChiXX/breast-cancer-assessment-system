@@ -13,6 +13,11 @@
 uv run uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
 ```
 
+```bash
+source .venv/bin/activate
+uv run uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
 ## 2. 验证管道 (Validation Pipeline)
 1. **TDD (强制)**: 所有功能必须先在 `tests/` 编写失败测试。禁止先写业务代码再补测试。
 2. **Clean Code**: 业务逻辑收口于 `app/services/`，Router 仅负责请求分发与参数校验。

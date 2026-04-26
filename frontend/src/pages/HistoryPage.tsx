@@ -9,7 +9,8 @@ import type { RiskLevel } from '../types';
 const riskBadgeConfig = {
   High: 'bg-red-100 text-red-700 border-red-200',
   Medium: 'bg-amber-100 text-amber-700 border-amber-200',
-  Low: 'bg-emerald-100 text-emerald-700 border-emerald-200'
+  Low: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  '未知': 'bg-gray-100 text-gray-700 border-gray-200'
 };
 
 export default function HistoryPage() {
@@ -65,7 +66,7 @@ export default function HistoryPage() {
                   <div className="flex-1 min-w-0 pr-4">
                     <div className="flex items-center gap-3 mb-2">
                       <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase border ${riskBadgeConfig[item.risk_level as RiskLevel] || riskBadgeConfig.Low}`}>
-                        {item.risk_level === 'High' ? '高风险' : item.risk_level === 'Medium' ? '中风险' : '低风险'}
+                        {item.risk_level === 'High' ? '高风险' : item.risk_level === 'Medium' ? '中风险' : item.risk_level === 'Low' ? '低风险' : '医学问询'}
                       </span>
                       <span className="text-xs text-gray-400 flex items-center gap-1">
                         <Calendar size={12} />

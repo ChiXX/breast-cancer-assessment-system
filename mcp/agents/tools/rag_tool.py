@@ -77,8 +77,9 @@ class RAGQueryTool(BaseTool):
                         f"ID: {doc.get('id', 'N/A')}\n"
                         f"Risk Level: {doc.get('risk_level')}\n"
                         f"Label: {doc.get('risk_label')}\n"
-                        f"Answer: {doc.get('answer')}\n"
                         f"Action: {doc.get('action_required')}\n"
+                        f"Grade: {doc.get('ctcae_grade')}\n"
+                        f"Answer: {doc.get('answer')}\n"
                     )
             
             if not results:

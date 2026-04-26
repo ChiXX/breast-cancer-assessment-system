@@ -11,21 +11,39 @@ class RAGAgent:
     It uses the rag_query_tool to retrieve information from medical guidelines.
     """
     
-    def __init__(self, llm_cfg: dict, name: str = 'RAG_Expert', description: str = '医疗知识专家，负责查询指南和提供专业建议。'):
+    def __init__(self, llm_cfg: dict, name: str = 'RAG_Expert', description: str = '医疗知识专家，负责检索知识库并按要求返回建议。'):
         self.llm_cfg = llm_cfg
         self.name = name
         self.description = description
         
+        from mcp.agents.schemas import RiskLevel, ActionRequired, CTCAEGrade
+        risk_levels = ", ".join([f"'{level.value}'" for level in RiskLevel if level != RiskLevel.UNKNOWN])
+        actions = ", ".join([f"'{action.value}'" for action in ActionRequired])
+        grades = ", ".join([f"'{grade.value}'" for grade in CTCAEGrade])
+        
         self.system_prompt = (
-            "你是一个专业的乳腺癌副作用评估专家。你的职责是调用 'rag_query_tool' 检索指南，并严格按以下格式回答：\n\n"
-            "1. **风险等级**：[根据指南判断的级别]\n"
-            "2. **下一步建议**：[具体的处置指导]\n"
-            "3. **是否建议联系团队**：[是/否]\n"
-            "4. **简单依据说明**：[简述指南中的判断标准或原因]\n"
-            "5. **参考依据ID**：[返回检索到的文档 ID，如 QA-M-004]\n\n"
+            f"你是一个专业的乳腺癌副作用评估专家。你的职责是调用 'rag_query_tool' 检索指南，并严格按 JSON 格式回答。\n\n"
+            f"### 【评估标准映射】\n"
+            "1. **HIGH** + **立即线下就医** + **Grade 1**\n"
+            "2. **HIGH** + **24小时内联系团队** + **Grade 2**\n"
+            "3. **MEDIUM** + **联系团队** + **Grade 3**\n"
+            "4. **MEDIUM** + **密切观察** + **Grade 4**\n"
+            "5. **LOW** + **继续观察与记录** + **Grade 5**\n\n"
+            "### 输出格式：\n"
+            "```json\n"
+            "{\n"
+            "  \"risk_level\": \"HIGH\",\n"
+            "  \"action_required\": \"立即线下就医\",\n"
+            "  \"ctcae_grade\": \"Grade 1\",\n"
+            "  \"advice\": \"建议立即前往急诊...\",\n"
+            "  \"contact_team\": true,\n"
+            "  \"evidence\": \"根据 CTCAE v5.0 指南...\",\n"
+            "  \"rule_id\": \"QA-H-001\"\n"
+            "}\n"
+            "```\n"
             "原则：\n"
             "- 必须基于 'rag_query_tool' 的检索结果，禁止凭空捏造。\n"
-            "- 如果检索工具未返回相关内容，或内容无法支持判断，必须直接回复：“不清楚”。"
+            "- 如果检索工具未返回相关内容，或内容无法支持判断，必须回复：`{\"status\": \"not_found\"}`。"
         )
         
         self.agent = Assistant(

@@ -4,7 +4,20 @@
 .env
 scratch
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.ipynb_checkpoints/
 
+assignment.md
+mcp/data/vector_store
+mcp/agents/memory
+*.db
 
-assignment.docx
-
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+frontend/npm-debug.log*
