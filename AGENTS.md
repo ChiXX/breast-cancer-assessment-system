@@ -8,13 +8,22 @@
 
 患者描述副作用 → LLM 提取症状 → 规则引擎分级 → 风险等级 + 处置建议。
 
-## 技术栈
+## 技术栈与架构
 
-| 层 | 选型 |
-|----|------|
-| Backend | FastAPI +  PostgreSQL |
-| Frontend | React 18 + TailwindCSS |
-| MCP | Hermes Agent + Skills + RAG |
+| 层 | 选型 | 职能边界 |
+|----|------|----------|
+| **Frontend** | React 18 + Tailwind | 用户交互、视觉展示、埋点上报 |
+| **Backend** | FastAPI + PostgreSQL | 业务编排、持久化、审计中控 |
+| **MCP** | Hermes Agents | 意图识别、症状评估、知识进化 |
+
+```mermaid
+graph TD
+    UI["Frontend"] <-- "API/Events" --> BE["Backend"]
+    BE <-- "Data" --> DB[("PostgreSQL")]
+    BE <-- "Evaluate" --> MCP["MCP (Agent)"]
+    MCP -- "Retrieve" --> KB[("Skills/Memory/RAG")]
+    KB -- "Learn" --> MCP
+```
 
 ## 导航
 
