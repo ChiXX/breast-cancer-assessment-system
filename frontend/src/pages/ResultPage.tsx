@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Layout } from '../components/Layout';
 import { assessmentService } from '../services/api';
-import { AlertTriangle, CheckCircle, Info, ArrowLeft, ShieldAlert, MessageSquare } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Info, ArrowLeft, ShieldAlert, MessageSquare, Brain, Clock } from 'lucide-react';
 import { logEvent } from '../utils/eventLogger';
 import { EventName } from '../types';
 import { getOrCreateSessionId } from '../utils/session';
@@ -100,6 +100,12 @@ export default function ResultPage() {
     enabled: !!id,
   });
 
+  const { data: history, isLoading: isHistoryLoading } = useQuery({
+    queryKey: ['assessment-history', id],
+    queryFn: () => assessmentService.getHistory(Number(id)),
+    enabled: !!id,
+  });
+
   useEffect(() => {
     if (data) {
       logEvent(EventName.RESULT_VIEWED, sessionId, data.id);
@@ -132,7 +138,7 @@ export default function ResultPage() {
       <Layout>
         <div className="max-w-2xl mx-auto pt-20 text-center">
           <p className="text-red-500">无法加载评估结果，请稍后再试。</p>
-          <Link to="/" className="mt-4 inline-block text-primary">返回首页</Link>
+          <Link to="/history" className="mt-4 inline-block text-primary">返回历史记录</Link>
         </div>
       </Layout>
     );
@@ -144,9 +150,9 @@ export default function ResultPage() {
   return (
     <Layout>
       <div className="max-w-2xl mx-auto pt-8 px-4 animate-fade-in">
-        <Link to="/" className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-primary mb-6 transition-colors">
+        <Link to="/history" className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-primary mb-6 transition-colors">
           <ArrowLeft size={16} />
-          返回重新评估
+          返回历史记录
         </Link>
 
         {/* Risk Banner */}
@@ -159,7 +165,20 @@ export default function ResultPage() {
               </div>
               <div className="flex-1">
                 <div className="flex items-center justify-between">
-                  <span className={`text-sm font-bold uppercase tracking-wider ${config.text}`}>风险分级</span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm font-bold uppercase tracking-wider ${config.text}`}>风险分级</span>
+                    {data.learned ? (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-blue-100 text-blue-700 border border-blue-200 flex items-center gap-1 shadow-sm">
+                        <Brain size={10} />
+                        已学习
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-gray-100 text-gray-500 border border-gray-200 flex items-center gap-1 shadow-sm">
+                        <Clock size={10} />
+                        未学习
+                      </span>
+                    )}
+                  </div>
                   {data.ctcae_grade && (
                     <span className="text-xs px-2 py-0.5 bg-white/50 rounded-full font-bold border border-current/10">
                       {data.ctcae_grade}
@@ -203,7 +222,7 @@ export default function ResultPage() {
         </div>
 
         {/* Evidence Accordion */}
-        <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
+        <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100 mb-12">
           <h4 className="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4">评估依据</h4>
           <div className="text-gray-600 text-sm leading-relaxed italic">
             {data.evidence}
@@ -211,6 +230,42 @@ export default function ResultPage() {
           <div className="mt-4 pt-4 border-t border-gray-200 flex justify-between text-[10px] text-gray-400 font-mono">
             <span>命中规则: {data.matched_rule_id}</span>
             <span>系统版本: {data.version}</span>
+          </div>
+        </div>
+
+        {/* Conversation History */}
+        <div className="mt-12 mb-20 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-300">
+          <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+            <MessageSquare className="text-primary" size={24} />
+            完整对话记录
+          </h3>
+          <div className="space-y-6 bg-gray-50/30 p-8 rounded-[2rem] border border-gray-100 shadow-inner">
+            {isHistoryLoading ? (
+               <div className="animate-pulse space-y-4">
+                 <div className="h-12 bg-gray-200 rounded-2xl w-2/3"></div>
+                 <div className="h-12 bg-gray-200 rounded-2xl w-1/2 ml-auto"></div>
+                 <div className="h-12 bg-gray-200 rounded-2xl w-3/4"></div>
+               </div>
+            ) : history && history.length > 0 ? (
+              history.map((msg, i) => (
+                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[90%] p-5 rounded-2xl shadow-sm ${
+                    msg.role === 'user' 
+                      ? 'bg-primary text-white rounded-tr-none' 
+                      : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'
+                  }`}>
+                    <div className="flex items-center gap-2 mb-1 opacity-70">
+                       <span className="text-[10px] font-black uppercase tracking-tighter">
+                         {msg.role === 'user' ? '患者' : '助手'}
+                       </span>
+                    </div>
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-center text-gray-400 py-10 italic">暂无详细对话记录</p>
+            )}
           </div>
         </div>
       </div>

@@ -243,6 +243,20 @@ async def learn_knowledge(background_tasks: BackgroundTasks):
     background_tasks.add_task(learning_agent.run, force=True)
     return KnowledgeLearnResponse(status="processing")
 
+@app.get("/v1/memory/all")
+async def get_all_memories():
+    """
+    获取所有已归档的记忆。
+    """
+    try:
+        memory_list_tool = ReadMemoryList()
+        res = memory_list_tool.call({})
+        if res.get('status') == 'success':
+            return res.get('memories', [])
+        return []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/v1/knowledge/skills")
 async def get_skills():
     """

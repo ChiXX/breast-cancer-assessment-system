@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 import traceback
 from sqlalchemy.orm import Session
-from typing import List, Dict
+from typing import List, Dict, Any
 from backend.app.database import get_db
 from backend.app.schemas.assessment import AssessmentCreate, AssessmentResponse, AssessmentSave
 from backend.app.services import assessment_service
@@ -40,9 +40,26 @@ def read_assessment(assessment_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Assessment not found")
     return db_assessment
 
-@router.get("", response_model=List[Dict[str, str]])
+@router.get("/history", response_model=List[Dict[str, Any]])
 def read_history(session_id: str, db: Session = Depends(get_db)):
     """
     Get full conversation history for a session.
     """
     return assessment_service.get_history(db, session_id)
+
+@router.get("/{assessment_id}/history", response_model=List[Dict[str, Any]])
+def read_assessment_history(assessment_id: int, db: Session = Depends(get_db)):
+    """
+    Get full conversation history for a specific assessment.
+    """
+    history = assessment_service.get_history_by_assessment_id(db, assessment_id)
+    if history is None:
+        raise HTTPException(status_code=404, detail="Assessment or history not found")
+    return history
+
+@router.get("", response_model=List[AssessmentResponse])
+def read_assessments(session_id: str = None, db: Session = Depends(get_db)):
+    """
+    Get list of saved assessments.
+    """
+    return assessment_service.list_assessments(db, session_id)

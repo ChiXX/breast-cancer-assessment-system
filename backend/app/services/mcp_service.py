@@ -47,3 +47,17 @@ def store_memory(session_id: str, history: list) -> Dict[str, Any]:
     except httpx.HTTPError as e:
         logger.error(f"Error calling MCP store_memory: {e}")
         raise e
+
+def get_all_memories() -> list:
+    """
+    Calls the MCP server to get all memories with learned status.
+    """
+    url = f"{MCP_URL}/v1/memory/all"
+    try:
+        with httpx.Client(timeout=10.0, trust_env=False) as client:
+            response = client.get(url)
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        logger.error(f"Error calling MCP get_all_memories: {e}")
+        return []

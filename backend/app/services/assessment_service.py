@@ -3,7 +3,7 @@ from datetime import datetime
 from backend.app.models.assessment import Assessment
 from backend.app.models.event import EventLog
 from backend.app.models.history_dialogue import HistoryDialogue
-from backend.app.services.mcp_service import evaluate_symptoms, store_memory
+from backend.app.services.mcp_service import evaluate_symptoms, store_memory, get_all_memories
 from backend.app.schemas.assessment import AssessmentCreate, AssessmentResponse, AssessmentSave
 import json
 
@@ -96,8 +96,79 @@ def save_assessment_and_history(db: Session, save_in: AssessmentSave) -> Assessm
     
     return db_assessment
 
-def get_assessment(db: Session, assessment_id: int) -> Assessment:
-    return db.query(Assessment).filter(Assessment.id == assessment_id).first()
+def get_assessment(db: Session, assessment_id: int) -> AssessmentResponse:
+    a = db.query(Assessment).filter(Assessment.id == assessment_id).first()
+    if not a:
+        return None
+    
+    # Fetch learned status from MCP for this session
+    from backend.app.services.mcp_service import get_all_memories
+    memories = get_all_memories()
+    is_learned = False
+    for m in memories:
+        if m.get('session_id') == a.session_id and m.get('learned'):
+            is_learned = True
+            break
+            
+    return AssessmentResponse(
+        id=a.id,
+        session_id=a.session_id,
+        user_input=a.user_input,
+        risk_level=a.risk_level,
+        action_required=a.action_required,
+        ctcae_grade=a.ctcae_grade,
+        advice=a.advice,
+        evidence=a.evidence,
+        matched_rule_id=a.matched_rule_id,
+        contact_team=a.contact_team,
+        display_text=a.display_text,
+        version="v1.0.0",
+        learned=is_learned,
+        created_at=a.created_at
+    )
+
+def list_assessments(db: Session, session_id: str = None) -> list[AssessmentResponse]:
+    query = db.query(Assessment)
+    if session_id:
+        query = query.filter(Assessment.session_id == session_id)
+    db_assessments = query.order_by(Assessment.created_at.desc()).all()
+    
+    # Fetch learned status from MCP
+    memories = get_all_memories()
+    # Create a map for quick lookup: session_id -> learned (taking latest timestamp if multiple)
+    learned_map = {}
+    for m in memories:
+        sid = m.get('session_id')
+        if sid:
+            # If any memory for this session is learned, mark it as learned
+            # Or we could be more specific. Usually one session has one main memory file per assessment cycle.
+            learned_map[sid] = learned_map.get(sid, False) or m.get('learned', False)
+            
+    results = []
+    for a in db_assessments:
+        results.append(AssessmentResponse(
+            id=a.id,
+            session_id=a.session_id,
+            user_input=a.user_input,
+            risk_level=a.risk_level,
+            action_required=a.action_required,
+            ctcae_grade=a.ctcae_grade,
+            advice=a.advice,
+            evidence=a.evidence,
+            matched_rule_id=a.matched_rule_id,
+            contact_team=a.contact_team,
+            display_text=a.display_text,
+            version="v1.0.0",
+            learned=learned_map.get(a.session_id, False),
+            created_at=a.created_at
+        ))
+    return results
+
+def get_history_by_assessment_id(db: Session, assessment_id: int):
+    assessment = get_assessment(db, assessment_id)
+    if not assessment:
+        return None
+    return get_history(db, assessment.session_id)
 
 def get_history(db: Session, session_id: str):
     latest_history = db.query(HistoryDialogue).filter(

@@ -202,6 +202,7 @@ export default function ChatPage() {
     },
     onSuccess: () => {
       alert('评估已完成并存入历史。');
+      startNewChat();
     }
   });
 

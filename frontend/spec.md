@@ -37,7 +37,7 @@
   - **蓝色 (Grade 4)**: 密切观察 -> 展示“添加观察日志”按钮。
   - **绿色 (Grade 5)**: 继续观察与记录 -> 展示“完成记录”按钮。
 - **`AssessmentActions`**: 结果展示时出现的附加按钮：
-  - **结束回答**: 提交最终评估结果并存入历史对话。
+  - **结束回答**: 提交最终评估结果并存入历史对话，随后开启新对话（清空当前状态）。
   - **我要补充**: 重新启用输入框，继续对话。
 
 ## 4. API 交互与代理 (Networking)
@@ -48,8 +48,9 @@
 ### 4.2 接口映射
 - `POST /api/v1/assessments`: 提交评估数据以获取实时反馈。
 - `POST /api/v1/assessments/save`: 最终提交评估结果与全量历史对话。
+- `GET /api/v1/assessments`: 获取所有评估记录列表（用于历史页面）。
 - `GET /api/v1/assessments/{id}`: 获取详情。
-- `GET /api/v1/history?session_id=...`: 获取该 session 的最新全量历史对话。
+- `GET /api/v1/assessments/{id}/history`: 获取该评估对应的完整对话历史。
 - `POST /api/v1/events`: 埋点事件上报。
 
 ## 5. 可观测性 (Observability)

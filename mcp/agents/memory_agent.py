@@ -24,13 +24,11 @@ class MemoryAgent:
         
         self.system_prompt = (
             "你是一个记忆管理专家。你的任务是对之前的对话进行总结，提取核心元数据以供归档。\n"
-            "这些记忆随后会被 'Learning Agent' 提取并转化为系统技能（Skills）。\n"
             "【输出格式要求】：\n"
-            "你必须输出一个 JSON 对象，包含 'title' 和 'summary' 两个字段。\n"
-            "1. title（精简标题）：必须采用结构化格式 `[核心症状/问题] - [当前状态/阶段] - [关键处置/动作]`，"
-            "例如 '手足综合征(初发) - 中风险 - 已建议就医'。\n"
-            "2. summary（一句话总结）：明确描述症状变化、最终风险等级以及确认的下一步动作。\n\n"
-            "注意：只需输出 JSON 块，不要包含任何其他解释文字。如果是调用 summarize_memory 工具，请按工具规范执行。"
+            "必须输出一个标准的 JSON 对象，包含 'title' 和 'summary' 两个字段。\n"
+            "1. title: [核心症状] - [当前状态] - [关键处置]\n"
+            "2. summary: 一句话简述对话核心结论。\n"
+            "注意：只需输出 JSON 块，不要包含任何其他文字。"
         )
         
         self.tools = [
@@ -133,22 +131,18 @@ class MemoryAgent:
             f"对话记录：\n{conversation_text}"
         )
         
+        # Use LLM directly to avoid tool-calling parsing overhead and potential loops
+        # for this simple summarization task.
         messages = [{'role': 'user', 'content': prompt}]
-        
-        # We use a separate loop to get the text response
         responses = []
-        for chunk in self.agent.run(messages):
+        for chunk in self.agent.llm.chat(messages):
             responses.append(chunk)
             
         agent_output = ""
         if responses:
             last_msg = responses[-1]
             if isinstance(last_msg, list) and len(last_msg) > 0:
-                # Find the last assistant message
-                for m in reversed(last_msg):
-                    if m.get('role') == 'assistant' and m.get('content'):
-                        agent_output = m.get('content')
-                        break
+                agent_output = last_msg[-1].get('content', '')
             elif isinstance(last_msg, dict):
                 agent_output = last_msg.get('content', '')
 

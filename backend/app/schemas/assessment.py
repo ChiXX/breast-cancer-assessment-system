@@ -20,6 +20,7 @@ class AssessmentResponse(BaseModel):
     display_text: Optional[str] = None
     contact_team: bool
     version: str
+    learned: bool = False
     created_at: datetime
 
     class Config:
@@ -33,7 +34,7 @@ class AssessmentSave(BaseModel):
 class HistoryDialogueResponse(BaseModel):
     id: int
     session_id: str
-    history_json: List[Dict[str, str]]
+    history_json: List[Dict[str, Any]]
     created_at: datetime
 
     class Config:

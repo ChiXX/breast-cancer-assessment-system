@@ -13,6 +13,7 @@ export interface Assessment {
   display_text?: string;
   contact_team: boolean;
   version: string;
+  learned: boolean;
   created_at: string;
 }
 

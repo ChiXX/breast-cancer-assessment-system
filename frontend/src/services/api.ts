@@ -25,10 +25,22 @@ export const assessmentService = {
     return response.data;
   },
 
-  getBySession: async (sessionId: string): Promise<any[]> => {
+  getAll: async (sessionId?: string): Promise<Assessment[]> => {
     const response = await api.get('/assessments', {
       params: { session_id: sessionId }
     });
+    return response.data;
+  },
+
+  getBySession: async (sessionId: string): Promise<any[]> => {
+    const response = await api.get('/assessments/history', {
+      params: { session_id: sessionId }
+    });
+    return response.data;
+  },
+
+  getHistory: async (id: number): Promise<{role: string, content: string}[]> => {
+    const response = await api.get(`/assessments/${id}/history`);
     return response.data;
   },
 
