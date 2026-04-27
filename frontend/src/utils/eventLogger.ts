@@ -13,8 +13,10 @@ export const logEvent = async (
     await axios.post(`${API_BASE_URL}/events`, {
       event_name: eventName,
       session_id: sessionId,
-      assessment_id: assessmentId,
-      metadata: metadata || {},
+      payload: {
+        assessment_id: assessmentId,
+        metadata: metadata || {},
+      },
     });
   } catch (error) {
     console.error('Failed to log event:', error);

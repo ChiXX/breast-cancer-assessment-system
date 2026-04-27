@@ -36,30 +36,19 @@ class MarkMemoryLearned(BaseTool):
         session_id = params.get('session_id', '')
         timestamp = params.get('timestamp', '')
         
-        file_path = os.path.join(MEMORY_DIR, session_id, f"{timestamp}.md")
+        file_path = os.path.join(MEMORY_DIR, session_id, f"{timestamp}.json")
         if not os.path.exists(file_path):
-            return {'status': 'error', 'message': 'Memory not found'}
+            return {'status': 'error', 'message': f'Memory not found at {file_path}'}
             
-        with open(file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
             
-        if content.startswith('---'):
-            parts = content.split('---', 2)
-            if len(parts) >= 3:
-                try:
-                    metadata = yaml.safe_load(parts[1])
-                    metadata['learned'] = True
-                    new_content = f"---\n{yaml.dump(metadata, allow_unicode=True)}---\n{parts[2]}"
-                    with open(file_path, 'w', encoding='utf-8') as f:
-                        f.write(new_content)
-                    return {'status': 'success'}
-                except Exception as e:
-                    return {'status': 'error', 'message': str(e)}
-        
-        # 如果没有 frontmatter，添加一个
-        metadata = {'learned': True}
-        new_content = f"---\n{yaml.dump(metadata, allow_unicode=True)}---\n\n{content}"
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(new_content)
+            data['learned'] = True
             
-        return {'status': 'success'}
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+                
+            return {'status': 'success'}
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}

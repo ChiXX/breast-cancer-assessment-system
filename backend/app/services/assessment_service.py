@@ -188,3 +188,10 @@ def get_history(db: Session, session_id: str):
         history.append({"role": "user", "content": past.user_input})
         history.append({"role": "assistant", "content": past.display_text or past.advice})
     return history
+
+def trigger_learning():
+    """
+    Triggers MCP learning workflow.
+    """
+    from backend.app.services.mcp_service import trigger_learning as mcp_trigger
+    return mcp_trigger()

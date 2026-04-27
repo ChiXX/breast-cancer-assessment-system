@@ -52,4 +52,9 @@ export const assessmentService = {
     });
     return response.data;
   },
+  
+  learn: async (): Promise<{status: string}> => {
+    const response = await api.post('/assessments/learn');
+    return response.data;
+  }
 };

@@ -26,11 +26,13 @@
 - **存储**：`mcp/agents/memory/{session_id}/{timestamp}.json`，带 `learned: false` 标记，不保留原始全量对话内容。
 
 ## 4. 学习 Agent: LearningAgent (进化)
-- **职责**：扫描未学习记忆，提取新症状或逻辑，更新 `SKILL.json` 或子资源。
+- **职责**：扫描未学习记忆（JSON 格式），提取新症状或逻辑，更新 `SKILL.md` 或子资源。
+- **核心逻辑**：从记忆 JSON 中原样提取 `assessment` 对象并持久化到 Skill 资源文件中，禁止对评估逻辑进行二次加工。
 - **触发**：通过 API 手动触发 (`/v1/knowledge/learn`)。
 
 ## 5. 审查 Agent: ReviewerAgent (审计)
 - **职责**：对 `LearningAgent` 产出的知识进行格式校验与冲突审查。
+- **规则**：强制校验 `assessment` 内部字段（风险等级、建议、依据等）的完整性。
 
 ## 6. FastAPI 接口规范 (Port 9001)
 
@@ -82,11 +84,11 @@
 - **响应**：`{"status": "processing"}`
 
 ### 6.4 技能库查询 (GET `/v1/knowledge/skills`)
-- **功能**：列出当前生效的所有评估规则元数据（从 SKILL.json 提取）。
+- **功能**：列出当前生效的所有评估规则元数据（从 SKILL.md 提取）。
 
 ## 7. 存储结构
 - `mcp/agents/memory/`: 结构化记忆 JSON 存储，按 `session_id` 分包。
-- `mcp/agents/skills/`: 原子技能目录，每个目录下包含 `SKILL.json` 及子资源 JSON 文件。
+- `mcp/agents/skills/`: 原子技能目录，每个目录下包含 `SKILL.md` 及子资源 Markdown 文件。
 - `mcp/agents/tools/`: 封装好的原子工具集。
 
 ## 8. 可观测性 (LangSmith)

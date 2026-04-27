@@ -20,20 +20,30 @@ def get_skill_paths():
         
     return paths
 
-def parse_skill_json(file_path):
-    """解析 SKILL.json 文件"""
+def parse_skill_md(file_path):
+    """解析 SKILL.md 文件中的 YAML frontmatter 和内容"""
     if not os.path.exists(file_path):
         return None
     
     with open(file_path, 'r', encoding='utf-8') as f:
-        try:
-            data = json.load(f)
-            return data
-        except Exception:
-            return None
+        content = f.read()
+        
+    content = content.strip()
+    if content.startswith('---'):
+        parts = content.split('---', 2)
+        if len(parts) >= 3:
+            try:
+                metadata = yaml.safe_load(parts[1])
+                return {
+                    'metadata': metadata,
+                    'content': parts[2].strip()
+                }
+            except Exception:
+                return None
+    return None
 
 def get_all_skill_metadata():
-    """获取所有技能的元数据"""
+    """获取所有技能的元数据 (从 SKILL.md 提取)"""
     metadata_list = []
     skill_roots = get_skill_paths()
     
@@ -43,11 +53,11 @@ def get_all_skill_metadata():
         for skill_dir in os.listdir(root):
             skill_path = os.path.join(root, skill_dir)
             if os.path.isdir(skill_path):
-                skill_json_path = os.path.join(skill_path, 'SKILL.json')
-                parsed = parse_skill_json(skill_json_path)
+                # 优先查阅 SKILL.md
+                skill_md_path = os.path.join(skill_path, 'SKILL.md')
+                parsed = parse_skill_md(skill_md_path)
                 if parsed:
                     metadata = parsed.get('metadata', {})
-                    # 确保包含名称
                     if 'name' not in metadata:
                         metadata['name'] = skill_dir
                     metadata_list.append(metadata)
@@ -55,7 +65,7 @@ def get_all_skill_metadata():
 
 @register_tool('read_skill')
 class ReadSkill(BaseTool):
-    description = '查阅指定技能的完整执行手册（SKILL.json 内容）。当系统提示词中的元数据表明某个技能可能适用时使用。'
+    description = '查阅指定技能的完整执行手册（SKILL.md 内容）。当系统提示词中的元数据表明某个技能可能适用时使用。'
     parameters = {
         'type': 'object',
         'properties': {
@@ -86,8 +96,9 @@ class ReadSkill(BaseTool):
             for skill_dir in os.listdir(root):
                 skill_path = os.path.join(root, skill_dir)
                 if os.path.isdir(skill_path):
-                    skill_json_path = os.path.join(skill_path, 'SKILL.json')
-                    parsed = parse_skill_json(skill_json_path)
+                    # 1. 尝试 SKILL.md
+                    skill_md_path = os.path.join(skill_path, 'SKILL.md')
+                    parsed = parse_skill_md(skill_md_path)
                     if parsed:
                         if parsed.get('metadata', {}).get('name') == skill_name or skill_dir == skill_name:
                             return {
@@ -97,10 +108,12 @@ class ReadSkill(BaseTool):
                                 'content': parsed.get('content', '')
                             }
         
-        # 2. 增强逻辑：如果没找到顶级技能，尝试在所有技能目录中查找匹配的资源文件
+        # 3. 增强逻辑：如果没找到顶级技能，尝试在所有技能目录中查找匹配的资源文件 (.md 或 .json)
         resource_name = skill_name
-        if not resource_name.endswith('.json'):
-            resource_name += '.json'
+        possible_names = [resource_name]
+        if not resource_name.endswith('.md') and not resource_name.endswith('.json'):
+            possible_names.append(resource_name + '.md')
+            possible_names.append(resource_name + '.json')
             
         for root in skill_roots:
             if not os.path.exists(root):
@@ -110,28 +123,28 @@ class ReadSkill(BaseTool):
                 if not os.path.isdir(skill_path):
                     continue
                 
-                # 直接尝试在技能目录下找该文件
-                target_file = os.path.join(skill_path, resource_name)
-                if os.path.exists(target_file):
-                    with open(target_file, 'r', encoding='utf-8') as f:
-                        return {
-                            'status': 'success',
-                            'name': skill_name,
-                            'parent_skill': skill_dir,
-                            'content': f.read()
-                        }
+                for name in possible_names:
+                    target_file = os.path.join(skill_path, name)
+                    if os.path.exists(target_file):
+                        with open(target_file, 'r', encoding='utf-8') as f:
+                            return {
+                                'status': 'success',
+                                'name': skill_name,
+                                'parent_skill': skill_dir,
+                                'content': f.read()
+                            }
                             
         return {'status': 'error', 'message': f'Skill or Resource "{skill_name}" not found'}
 
 @register_tool('upsert_skill')
 class UpsertSkill(BaseTool):
-    description = '更新或创建一个技能执行手册（SKILL.json）。用于将学习到的新知识持久化。'
+    description = '更新或创建一个技能执行手册（SKILL.md）。用于将学习到的新知识持久化。'
     parameters = {
         'type': 'object',
         'properties': {
             'skill_name': {
                 'type': 'string',
-                'description': '技能名称'
+                'description': '技能名称 (必须仅包含小写字母、数字和连字符，严禁使用下划线)'
             },
             'description': {
                 'type': 'string',
@@ -139,7 +152,7 @@ class UpsertSkill(BaseTool):
             },
             'content': {
                 'type': 'string',
-                'description': '手册正文内容（JSON 格式字符串）'
+                'description': '手册正文内容（Markdown 格式）'
             }
         },
         'required': ['skill_name', 'description', 'content']
@@ -163,26 +176,25 @@ class UpsertSkill(BaseTool):
         skill_dir = os.path.join(os.path.abspath("mcp/agents/skills"), skill_name)
         os.makedirs(skill_dir, exist_ok=True)
         
-        skill_json_path = os.path.join(skill_dir, 'SKILL.json')
+        skill_md_path = os.path.join(skill_dir, 'SKILL.md')
         
         import datetime
-        data = {
-            'metadata': {
-                'name': skill_name,
-                'description': description,
-                'updated_at': datetime.datetime.now().isoformat()
-            },
-            'content': content
+        metadata = {
+            'name': skill_name,
+            'description': description,
+            'updated_at': datetime.datetime.now().isoformat()
         }
         
-        with open(skill_json_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        md_content = f"---\n{yaml.dump(metadata, allow_unicode=True)}---\n\n{content}"
+        
+        with open(skill_md_path, 'w', encoding='utf-8') as f:
+            f.write(md_content)
             
-        return {'status': 'success', 'path': skill_json_path}
+        return {'status': 'success', 'path': skill_md_path}
 
 @register_tool('upsert_skill_resource')
 class UpsertSkillResource(BaseTool):
-    description = '在技能目录下创建或更新子资源文件（如 fever.json）。用于多级渐进式披露。'
+    description = '在技能目录下创建或更新子资源文件（如 fever.md）。用于多级渐进式披露。'
     parameters = {
         'type': 'object',
         'properties': {
@@ -192,11 +204,11 @@ class UpsertSkillResource(BaseTool):
             },
             'resource_name': {
                 'type': 'string',
-                'description': '资源文件名（如 fever.json）'
+                'description': '资源文件名（如 fever.md）'
             },
             'content': {
                 'type': 'string',
-                'description': '资源文件内容（JSON 格式字符串）'
+                'description': '资源文件内容'
             }
         },
         'required': ['skill_name', 'resource_name', 'content']
@@ -217,11 +229,8 @@ class UpsertSkillResource(BaseTool):
         if not skill_name or not resource_name:
             return {'status': 'error', 'message': 'skill_name and resource_name are required'}
             
-        # 统一资源名格式
-        if resource_name.startswith('./'):
-            resource_name = resource_name[2:]
-        if not resource_name.endswith('.json'):
-            resource_name = resource_name.split('.')[0] + '.json'
+        resource_base = resource_name.split('.')[0]
+        resource_name = resource_base + '.md'
             
         skill_dir = os.path.join(os.path.abspath("mcp/agents/skills"), skill_name)
         os.makedirs(skill_dir, exist_ok=True)
@@ -235,7 +244,7 @@ class UpsertSkillResource(BaseTool):
 
 @register_tool('resolve_skill_references')
 class ResolveSkillReferences(BaseTool):
-    description = '解析并读取技能文档（SKILL.json）中引用的外部资源文件内容。'
+    description = '解析并读取技能文档（SKILL.md）中引用的外部资源文件内容。'
     parameters = {
         'type': 'object',
         'properties': {
@@ -245,7 +254,7 @@ class ResolveSkillReferences(BaseTool):
             },
             'resource_path': {
                 'type': 'string',
-                'description': '引用的资源路径，如 "./fever.json"'
+                'description': '引用的资源路径，如 "./fever.md"'
             }
         },
         'required': ['skill_name', 'resource_path']
@@ -267,9 +276,6 @@ class ResolveSkillReferences(BaseTool):
         else:
             resource_name = resource_path
             
-        if not resource_name.endswith('.json'):
-            resource_name = resource_name.split('.')[0] + '.json'
-            
         skill_roots = get_skill_paths()
         
         for root in skill_roots:
@@ -279,5 +285,15 @@ class ResolveSkillReferences(BaseTool):
                 with open(target_file, 'r', encoding='utf-8') as f:
                     content = f.read()
                 return {'status': 'success', 'content': content}
+            
+            # 兼容性处理：如果没带扩展名，尝试 .md 或 .json
+            if '.' not in resource_name:
+                for ext in ['.md', '.json']:
+                    target_file = os.path.join(skill_dir, resource_name + ext)
+                    if os.path.exists(target_file):
+                        with open(target_file, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                        return {'status': 'success', 'content': content}
                             
         return {'status': 'error', 'message': f'Resource {resource_name} not found in skill {skill_name}'}
+

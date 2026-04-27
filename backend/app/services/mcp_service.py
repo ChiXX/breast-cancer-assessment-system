@@ -61,3 +61,17 @@ def get_all_memories() -> list:
     except Exception as e:
         logger.error(f"Error calling MCP get_all_memories: {e}")
         return []
+
+def trigger_learning() -> Dict[str, Any]:
+    """
+    Calls the MCP server to trigger knowledge learning.
+    """
+    url = f"{MCP_URL}/v1/knowledge/learn"
+    try:
+        with httpx.Client(timeout=10.0, trust_env=False) as client:
+            response = client.post(url)
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        logger.error(f"Error calling MCP trigger_learning: {e}")
+        raise e

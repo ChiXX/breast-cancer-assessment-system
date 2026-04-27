@@ -14,11 +14,31 @@ const riskBadgeConfig: Record<string, string> = {
 
 export default function HistoryPage() {
   const [showLearned, setShowLearned] = useState(true);
+  const [isLearning, setIsLearning] = useState(false);
+  const [learnMessage, setLearnMessage] = useState<string | null>(null);
   
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['history'],
     queryFn: () => assessmentService.getAll(),
   });
+
+  const handleLearn = async () => {
+    setIsLearning(true);
+    setLearnMessage(null);
+    try {
+      await assessmentService.learn();
+      setLearnMessage('知识自进化已触发，正在后台运行...');
+      setTimeout(() => {
+        setLearnMessage(null);
+        refetch();
+      }, 5000);
+    } catch (err) {
+      setLearnMessage('触发学习失败，请重试。');
+      setTimeout(() => setLearnMessage(null), 3000);
+    } finally {
+      setIsLearning(false);
+    }
+  };
 
   const filteredData = data?.filter(item => showLearned || !item.learned);
 
@@ -45,6 +65,21 @@ export default function HistoryPage() {
             <p className="text-gray-500 mt-1">查看您在该设备上的既往评估报告</p>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={handleLearn}
+              disabled={isLearning || !data?.some(i => !i.learned)}
+              className={`flex items-center gap-2 font-bold px-4 py-2 rounded-xl shadow-md transition-all text-sm ${
+                isLearning 
+                ? 'bg-blue-100 text-blue-400 cursor-not-allowed' 
+                : !data?.some(i => !i.learned)
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'bg-white text-blue-600 border border-blue-100 hover:shadow-lg'
+              }`}
+              title={!data?.some(i => !i.learned) ? "暂无待学习的记忆" : "触发知识自进化"}
+            >
+              <Brain size={16} className={isLearning ? "animate-pulse" : ""} />
+              {isLearning ? '学习中...' : '启动自进化'}
+            </button>
             <Link
               to="/"
               className="flex items-center gap-2 bg-primary text-white font-bold px-4 py-2 rounded-xl shadow-md hover:shadow-lg transition-all text-sm"
@@ -54,6 +89,15 @@ export default function HistoryPage() {
             </Link>
           </div>
         </div>
+
+        {learnMessage && (
+          <div className={`mb-6 p-4 rounded-2xl flex items-center gap-3 text-sm font-medium animate-in fade-in slide-in-from-top-4 ${
+            learnMessage.includes('失败') ? 'bg-red-50 text-red-700 border border-red-100' : 'bg-blue-50 text-blue-700 border border-blue-100'
+          }`}>
+            {learnMessage.includes('失败') ? <AlertCircle size={18} /> : <Brain size={18} className="animate-pulse" />}
+            {learnMessage}
+          </div>
+        )}
 
         <div className="flex items-center justify-between mb-6 bg-white p-2 rounded-2xl border border-gray-100 shadow-sm">
           <div className="flex items-center gap-4 px-2">

@@ -21,3 +21,4 @@ frontend/dist/
 frontend/dist-ssr/
 frontend/*.local
 frontend/npm-debug.log*
+*.log

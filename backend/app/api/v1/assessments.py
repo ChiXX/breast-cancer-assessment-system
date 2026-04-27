@@ -63,3 +63,14 @@ def read_assessments(session_id: str = None, db: Session = Depends(get_db)):
     Get list of saved assessments.
     """
     return assessment_service.list_assessments(db, session_id)
+
+@router.post("/learn")
+def trigger_learning():
+    """
+    Manually trigger MCP learning process.
+    """
+    try:
+        return assessment_service.trigger_learning()
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))

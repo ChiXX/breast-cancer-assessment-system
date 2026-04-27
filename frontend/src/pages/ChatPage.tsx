@@ -160,7 +160,15 @@ export default function ChatPage() {
 
   useEffect(() => {
     logEvent(EventName.ASSESSMENT_STARTED, sessionId);
+    
+    const handleBeforeUnload = () => {
+      logEvent(EventName.ASSESSMENT_CLOSED, sessionId);
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
     return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
       logEvent(EventName.ASSESSMENT_CLOSED, sessionId);
     };
   }, [sessionId]);

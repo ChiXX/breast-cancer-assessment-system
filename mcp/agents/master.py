@@ -56,11 +56,38 @@ class MedicalMaster:
                     # Call the agent synchronously
                     return rag_expert_instance.chat(query)
 
+        # Initial prompt generation
+        self.system_prompt = self._generate_system_prompt()
+        
+        # Tools to be used by the Assistant
+        self.tools = [
+            'read_skill',
+            'resolve_skill_references',
+            'read_memory_list',
+            'read_memory_detail',
+            'read_memory_conversation',
+            'RAG_Expert',
+        ]
+        
+        # Initialize the underlying Qwen Assistant
+        self.agent = Assistant(
+            llm=self.llm_cfg,
+            system_message=self.system_prompt,
+            function_list=self.tools,
+            name=name
+        )
+
+    def _generate_system_prompt(self) -> str:
+        """
+        Generates the system prompt dynamically based on current skills and memories.
+        """
         # Load all skill metadata for system prompt
         skills_metadata = get_all_skill_metadata()
         skills_info = "\n".join([f"- {m.get('name')}: {m.get('description')}" for m in skills_metadata])
+        if not skills_info:
+            skills_info = "暂无可用技能库。"
         
-        # Load unlearned historical memory clues (Shared across all sessions)
+        # Load unlearned historical memory clues
         historical_memory_text = "暂无未学习的历史记忆线索。"
         from mcp.agents.tools.memory_tools import ReadMemoryList
         memory_list_tool = ReadMemoryList()
@@ -70,16 +97,15 @@ class MedicalMaster:
             for mem in res['memories']:
                 assessment = mem.get('assessment', {})
                 risk_info = f" | 风险: {assessment.get('risk_level', '未知')}" if assessment else ""
-                assessment_json = json.dumps(assessment, ensure_ascii=False) if assessment else "{}"
-                clues.append(f"- 时间: {mem['timestamp']} | 会话: {mem['session_id']} | 标题: {mem['title']}{risk_info}\n  总结: {mem['summary']}\n  评估数据: {assessment_json}")
-            historical_memory_text = "以下为尚未提炼为技能的最近记忆线索（未学习）：\n" + "\n".join(clues) + "\n\n(提示：请优先参考 Skills 库。如果匹配不到，可以直接参考这些包含完整评估数据（评估数据字段）的最近记忆。如果这些简要信息不足，请调用 read_memory_detail 获取详情。)"
+                clues.append(f"- 时间: {mem['timestamp']} | 会话: {mem['session_id']} | 标题: {mem['title']}{risk_info}\n  总结: {mem['summary']}")
+            historical_memory_text = "以下为尚未提炼为技能的最近记忆线索（未学习）：\n" + "\n".join(clues) + "\n\n(提示：请优先参考 Skills 库。如果匹配不到且需要详细评估数据，请调用 read_memory_detail 获取该会话的完整记忆内容。)"
                 
         from mcp.agents.schemas import RiskLevel, ActionRequired, CTCAEGrade
         risk_levels = ", ".join([f"'{level.value}'" for level in RiskLevel if level != RiskLevel.UNKNOWN])
         actions = ", ".join([f"'{action.value}'" for action in ActionRequired])
         grades = ", ".join([f"'{grade.value}'" for grade in CTCAEGrade])
         
-        self.system_prompt = (
+        return (
             "你是一个高度专业的乳腺癌副作用评估系统。你负责通过对话收集患者症状，并在信息充分时提供基于指南的评估。\n\n"
             "以下是系统中可用的评估资源：\n"
             "## 评估技能（Skills）\n"
@@ -134,24 +160,6 @@ class MedicalMaster:
             "}\n"
             "```"
         )
-        
-        # Tools to be used by the Assistant
-        self.tools = [
-            'read_skill',
-            'resolve_skill_references',
-            'read_memory_list',
-            'read_memory_detail',
-            'read_full_history',
-            'RAG_Expert',
-        ]
-        
-        # Initialize the underlying Qwen Assistant
-        self.agent = Assistant(
-            llm=self.llm_cfg,
-            system_message=self.system_prompt,
-            function_list=self.tools,
-            name=name
-        )
 
     @traceable(name="MedicalMaster Response Generation")
     def run(self, messages: List[dict]) -> Iterator[dict]:
@@ -159,6 +167,10 @@ class MedicalMaster:
         Run the agent with the given message history.
         Returns a generator for streaming responses.
         """
+        # Refresh system prompt to include latest skills/memories
+        self.system_prompt = self._generate_system_prompt()
+        self.agent.system_message = self.system_prompt
+        
         # 在 LangSmith 中注入系统提示词和工具元数据，提高监控可见性
         from langsmith import get_current_run_tree
         run_tree = get_current_run_tree()

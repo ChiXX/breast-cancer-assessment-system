@@ -7,9 +7,9 @@ from langsmith import traceable
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 
-@register_tool('read_full_history')
-class ReadFullHistory(BaseTool):
-    description = '从后端数据库获取指定会话的全量历史对话记录。当需要深入了解过去细节时使用。'
+@register_tool('read_memory_conversation')
+class ReadMemoryConversation(BaseTool):
+    description = '从后端数据库获取指定会话的全量历史对话原文。当需要深入了解过去的沟通细节、语气或具体主诉时使用。'
     parameters = {
         'type': 'object',
         'properties': {
@@ -21,7 +21,7 @@ class ReadFullHistory(BaseTool):
         'required': ['session_id']
     }
 
-    @traceable(name="Read Full History Tool")
+    @traceable(name="Read Memory Conversation Tool")
     def call(self, params: Union[str, dict], **kwargs):
         if isinstance(params, str):
             try:
@@ -33,7 +33,7 @@ class ReadFullHistory(BaseTool):
         if not session_id:
             return {'status': 'error', 'message': 'session_id is required'}
             
-        url = f"{BACKEND_URL}/api/v1/assessments?session_id={session_id}"
+        url = f"{BACKEND_URL}/api/v1/assessments/history?session_id={session_id}"
         
         try:
             # trust_env=False to avoid proxy issues in some environments
@@ -43,4 +43,4 @@ class ReadFullHistory(BaseTool):
                 history = response.json()
                 return {'status': 'success', 'history': history}
         except Exception as e:
-            return {'status': 'error', 'message': f"Failed to fetch history: {str(e)}"}
+            return {'status': 'error', 'message': f"Failed to fetch conversation history: {str(e)}"}
