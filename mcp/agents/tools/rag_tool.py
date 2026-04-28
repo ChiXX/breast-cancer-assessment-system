@@ -73,19 +73,20 @@ class RAGQueryTool(BaseTool):
             for idx in I[0]:
                 if idx in self.doc_map:
                     doc = self.doc_map[idx]
-                    results.append(
-                        f"ID: {doc.get('id', 'N/A')}\n"
-                        f"Risk Level: {doc.get('risk_level')}\n"
-                        f"Label: {doc.get('risk_label')}\n"
-                        f"Action: {doc.get('action_required')}\n"
-                        f"Grade: {doc.get('ctcae_grade')}\n"
-                        f"Answer: {doc.get('answer')}\n"
-                    )
+                    results.append({
+                        "id": doc.get('id', 'N/A'),
+                        "risk_level": doc.get('risk_level'),
+                        "risk_label": doc.get('risk_label'),
+                        "action_required": doc.get('action_required'),
+                        "ctcae_grade": doc.get('ctcae_grade'),
+                        "advice": doc.get('answer'), # 'answer' in DB is used as advice
+                        "rule_id": doc.get('id')
+                    })
             
             if not results:
-                return "No relevant information found."
+                return json.dumps({"status": "not_found", "message": "No relevant information found."}, ensure_ascii=False)
             
-            return "\n---\n".join(results)
+            return json.dumps(results, ensure_ascii=False, indent=2)
             
         except Exception as e:
             return f"Error during query: {str(e)}"

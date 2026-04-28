@@ -1,27 +1,19 @@
-import os
-from typing import List, Iterator
-from qwen_agent.agents import Assistant
+from typing import List, Iterator, Optional
 from langsmith import traceable
-import dashscope
-from mcp.agents.tools import RAGQueryTool # Ensure tool is registered
+from mcp.agents.base import BaseMedicalAgent
+from mcp.agents.config import EXPERT_MODEL, get_llm_cfg
 
-class RAGAgent:
+class RAGAgent(BaseMedicalAgent):
     """
     RAGAgent is a specialized medical knowledge agent.
     It uses the rag_query_tool to retrieve information from medical guidelines.
     """
     
-    def __init__(self, llm_cfg: dict, name: str = 'RAG_Expert', description: str = '医疗知识专家，负责检索知识库并按要求返回建议。'):
-        self.llm_cfg = llm_cfg
-        self.name = name
-        self.description = description
+    def __init__(self, llm_cfg: Optional[dict] = None, name: str = 'RAG_Expert'):
+        llm_cfg = llm_cfg or get_llm_cfg(EXPERT_MODEL)
         
-        from mcp.agents.schemas import RiskLevel, ActionRequired, CTCAEGrade
-        risk_levels = ", ".join([f"'{level.value}'" for level in RiskLevel if level != RiskLevel.UNKNOWN])
-        actions = ", ".join([f"'{action.value}'" for action in ActionRequired])
-        grades = ", ".join([f"'{grade.value}'" for grade in CTCAEGrade])
         
-        self.system_prompt = (
+        system_prompt = (
             f"你是一个专业的乳腺癌副作用评估专家。你的职责是调用 'rag_query_tool' 检索指南，并严格按 JSON 格式回答。\n\n"
             f"### 【评估标准映射】\n"
             "1. **HIGH** + **立即线下就医** + **Grade 1**\n"
@@ -46,12 +38,11 @@ class RAGAgent:
             "- 如果检索工具未返回相关内容，或内容无法支持判断，必须回复：`{\"status\": \"not_found\"}`。"
         )
         
-        self.agent = Assistant(
-            llm=self.llm_cfg,
-            system_message=self.system_prompt,
-            function_list=['rag_query_tool'],
-            name=self.name,
-            description=self.description
+        super().__init__(
+            llm_cfg=llm_cfg,
+            name=name,
+            system_prompt=system_prompt,
+            tools=['rag_query_tool']
         )
 
     @traceable(name="RAGAgent Run")
@@ -63,19 +54,8 @@ class RAGAgent:
             yield chunk
 
     @traceable(name="RAGAgent Chat")
-    def chat(self, user_input: str) -> str:
+    def chat(self, user_input: str, history: Optional[List[dict]] = None) -> str:
         """
         Synchronous chat helper.
         """
-        messages = [{'role': 'user', 'content': user_input}]
-        responses = []
-        for chunk in self.run(messages):
-            responses.append(chunk)
-        
-        if responses:
-            last_msg = responses[-1]
-            if isinstance(last_msg, list) and len(last_msg) > 0:
-                return last_msg[-1]['content']
-            elif isinstance(last_msg, dict):
-                return last_msg.get('content', '')
-        return "不清楚"
+        return super().chat(user_input, history)

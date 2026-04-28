@@ -1,5 +1,4 @@
 import os
-import yaml
 import json
 from typing import Union
 from qwen_agent.tools.base import BaseTool, register_tool

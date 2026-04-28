@@ -15,6 +15,8 @@ updated_at: '2026-04-27T15:51:24.892721'
 | 脱发 | [alopecia.md](./alopecia.md) | QA-L-001 | LOW |
 | 皮肤干燥/瘙痒/色素改变 | [dry-skin.md](./dry-skin.md) | QA-L-002 | LOW |
 | 手脚麻木（严重） | [peripheral-neuropathy.md](./peripheral-neuropathy.md) | QA-M-005 | HIGH |
+| 呕吐 | [vomiting.md](./vomiting.md) | - | HIGH |
+| 神经系统急症 | [neurological-emergency.md](./neurological-emergency.md) | - | HIGH |
 
 ## 使用说明
 

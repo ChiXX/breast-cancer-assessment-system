@@ -1,80 +1,40 @@
-import os
-import json
-from typing import List, Optional, Union, Iterator
-from qwen_agent.agents import Assistant
-from qwen_agent.tools.base import BaseTool, register_tool
+from typing import List, Optional, Iterator
 from langsmith import traceable
-import dashscope
+from mcp.agents.base import BaseMedicalAgent
 from mcp.agents.tools import get_all_skill_metadata
-from mcp.agents.rag_agent import RAGAgent
 from mcp.agents.learning_agent import LearningAgent
-from mcp.agents.config import MASTER_MODEL, get_llm_cfg
-from mcp.agents.tools.history_tools import ReadFullHistory
+from mcp.agents.config import MASTER_MODEL, LEARNING_MODEL, get_llm_cfg
 
-class MedicalMaster:
+class MedicalMaster(BaseMedicalAgent):
     """
     MedicalMaster Agent responsible for orchestrating the medical assessment process.
     Uses qwen-agent Router framework and integrates LangSmith for tracing.
     """
     
-    def __init__(self, model_type: str = MASTER_MODEL, name: str = 'Medical Assistant'):
-        dashscope.api_key = os.getenv('DASHSCOPE_API_KEY')
-        self.llm_cfg = get_llm_cfg(model_type)
+    def __init__(self, llm_cfg: Optional[dict] = None, name: str = 'Medical Assistant'):
+        llm_cfg = llm_cfg or get_llm_cfg(MASTER_MODEL)
         
         # Initialize sub-agents
-        self.rag_expert = RAGAgent(llm_cfg=self.llm_cfg)
-        self.learning_agent = LearningAgent(llm_cfg=self.llm_cfg)
+        self.learning_agent = LearningAgent(llm_cfg=get_llm_cfg(LEARNING_MODEL))
         
-        # Define a wrapper tool for RAG_Expert to make it more reliable for the Assistant
-        rag_expert_instance = self.rag_expert
-        from qwen_agent.tools.base import TOOL_REGISTRY
-        if 'RAG_Expert' not in TOOL_REGISTRY:
-            @register_tool('RAG_Expert')
-            class RAGExpertTool(BaseTool):
-                description = '医疗知识专家，负责查询指南和提供专业建议。当用户提到症状时必须调用。'
-                parameters = {
-                    'type': 'object',
-                    'properties': {
-                        'query': {
-                            'type': 'string',
-                            'description': '需要查询的症状或问题描述'
-                        }
-                    },
-                    'required': ['query']
-                }
-
-                def call(self, params: Union[str, dict], **kwargs) -> str:
-                    if isinstance(params, str):
-                        try:
-                            params = json.loads(params)
-                        except json.JSONDecodeError:
-                            query = params
-                        else:
-                            query = params.get('query', params)
-                    else:
-                        query = params.get('query', '')
-                    # Call the agent synchronously
-                    return rag_expert_instance.chat(query)
-
         # Initial prompt generation
-        self.system_prompt = self._generate_system_prompt()
+        system_prompt = self._generate_system_prompt()
         
         # Tools to be used by the Assistant
-        self.tools = [
+        tools = [
             'read_skill',
             'resolve_skill_references',
             'read_memory_list',
             'read_memory_detail',
             'read_memory_conversation',
-            'RAG_Expert',
+            'rag_query_tool',
         ]
         
-        # Initialize the underlying Qwen Assistant
-        self.agent = Assistant(
-            llm=self.llm_cfg,
-            system_message=self.system_prompt,
-            function_list=self.tools,
-            name=name
+        super().__init__(
+            llm_cfg=llm_cfg,
+            name=name,
+            system_prompt=system_prompt,
+            tools=tools
         )
 
     def _generate_system_prompt(self) -> str:
@@ -100,10 +60,6 @@ class MedicalMaster:
                 clues.append(f"- 时间: {mem['timestamp']} | 会话: {mem['session_id']} | 标题: {mem['title']}{risk_info}\n  总结: {mem['summary']}")
             historical_memory_text = "以下为尚未提炼为技能的最近记忆线索（未学习）：\n" + "\n".join(clues) + "\n\n(提示：请优先参考 Skills 库。如果匹配不到且需要详细评估数据，请调用 read_memory_detail 获取该会话的完整记忆内容。)"
                 
-        from mcp.agents.schemas import RiskLevel, ActionRequired, CTCAEGrade
-        risk_levels = ", ".join([f"'{level.value}'" for level in RiskLevel if level != RiskLevel.UNKNOWN])
-        actions = ", ".join([f"'{action.value}'" for action in ActionRequired])
-        grades = ", ".join([f"'{grade.value}'" for grade in CTCAEGrade])
         
         return (
             "你是一个高度专业的乳腺癌副作用评估系统。你负责通过对话收集患者症状，并在信息充分时提供基于指南的评估。\n\n"
@@ -114,7 +70,7 @@ class MedicalMaster:
             f"{historical_memory_text}\n\n"
             "### 【核心任务】\n"
             "1. **信息收集**：如果患者描述不全，请进行追问（question）。追问必须简单明了，字数限制在50字以内。最多只允许追问两次。如果追问两次后信息仍不全，请基于现有信息给出初步评估或引导就医。\n"
-            "2. **专业评估**：一旦信息充足，必须通过调用技能库、检索历史记忆（Memory）或使用 `RAG_Expert` 获取指南依据。\n"
+            "2. **专业评估**：一旦信息充足，必须通过调用技能库、检索历史记忆（Memory）或使用 `rag_query_tool` 获取指南依据。\n"
             "   - **【强制要求】**：如果工具返回了完整的评估 JSON（包含 risk_level, action_required 等），你**必须原封不动**地将其放入输出 JSON 的 `data` 字段中。严禁修改任何字段值（如 Grade 或风险等级）。\n"
             "   - 你只需根据评估结果，在 `display_text` 中提供一段自然语言的开场白或简述即可。\n\n"
             "### 【风险分级与行动映射参考】\n"
@@ -126,9 +82,9 @@ class MedicalMaster:
             "5. **低风险 (LOW)** + **继续观察与记录** + **Grade 5**\n\n"
             "### 【工作准则】\n"
             "1. **中控定位**：你的任务是合理调度工具与资源。你是评估流程的组织者，而不是决策的修改者。\n"
-            "2. **检索优先级**：Skills > Memory > RAG_Expert。\n"
+            "2. **检索优先级**：Skills > Memory > rag_query_tool。\n"
             "3. **最终回复格式 (HARD REQUIREMENT)**：当你准备好向用户（患者）进行【追问】或提供【评估结果】时，你**必须且只能**以 JSON 格式返回。严禁在 JSON 块之外添加任何解释文字。\n\n"
-            "注意：在调用工具（如 RAG_Expert, read_skill 等）的过程中，请遵循标准的 Action/Action Input 流程，不要将工具调用包装在上述 JSON 格式中。"
+            "注意：在调用工具（如 rag_query_tool, read_skill 等）的过程中，请遵循标准的 Action/Action Input 流程，不要将工具调用包装在上述 JSON 格式中。"
             "### 【输出协议】\n"
             "1. **必须包含 `type` 字段**，值只能是 `evaluation` 或 `question`。\n"
             "2. **如果是 `evaluation`**：\n"
@@ -195,14 +151,13 @@ class MedicalMaster:
         
         # 1. 检查是否触发手动学习
         if user_input.strip() == "/learn":
-            return self.learning_agent.run(force=True)
+            return self.learning_agent.start_learning(force=True)
             
         # Add session information to the first user message or as a system hint
         # We can prepend it to the current input to ensure the agent knows the session_id for tools
         context_input = f"[Session ID: {session_id}]\n{user_input}"
         history.append({'role': 'user', 'content': context_input})
         
-        print(f"DEBUG: Calling agent with {len(history)} messages")
         responses = []
         for chunk in self.run(history):
             responses.append(chunk)
@@ -215,7 +170,6 @@ class MedicalMaster:
             elif isinstance(last_msg, dict):
                 content = last_msg.get('content', '')
             
-            print(f"DEBUG: Agent raw output: {content[:100]}...")
             return content if content else "抱歉，我暂时无法处理您的请求。"
         
         return "抱歉，我暂时无法处理您的请求。"

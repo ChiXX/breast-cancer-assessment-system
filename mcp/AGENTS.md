@@ -14,7 +14,7 @@
 | **知识闭环** | 零散 Memory 必须经由 `LearningAgent` 提炼为 Skill，且必须通过 `ReviewerAgent` 审计。 |
 | **追问约束** | 单句提问，单点切入，总追问次数严禁超过 2 次。严禁在信息齐全时追问。 |
 | **原样转达** | 中控必须完整、原样展示专家输出（包含风险等级、建议与参考依据）。 |
-| **可观测性** | 强制集成 LangSmith。`MedicalMaster` 必须在 Metadata 中注入 System Prompt。 |
+| **可观测性** | 集成 LangSmith。`MedicalMaster` 且在 Metadata 中注入 System Prompt。 |
 
 ## 启动
 
@@ -25,8 +25,14 @@ uv run python mcp/agent.py
 ```
 ```bash
 # 运行 MCP
+source .venv/bin/activate
 export PYTHONPATH=$PYTHONPATH:.
 uv run python mcp/server.py
+```
+
+## 杀死进程
+```bash
+pkill -f "mcp/server.py"
 ```
 
 ## 导航
@@ -41,6 +47,8 @@ uv run python mcp/server.py
 | ├── `reviewer_agent.py` | ReviewerAgent (合规审计) |
 | ├── `memory_agent.py` | MemoryAgent (记忆持久化) |
 | ├── `skills/` | 声明式技能层 (症状-风险映射字典) |
+| ├── `memory/` | JSON结构化压缩记忆 |
 | └── `tools/` | 程序化工具层 (rag_tool.py, skill_tools.py, etc.) |
 | `data/` | 知识库与 FAISS 索引目录 |
 | `agent.py` | TUI 交互入口 |
+| `server.py` | MCP |

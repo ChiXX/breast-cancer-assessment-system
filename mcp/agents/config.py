@@ -5,9 +5,10 @@ import os
 
 # Default model types
 MASTER_MODEL = os.getenv("MASTER_MODEL", "deepseek-v4-flash")
-EXPERT_MODEL = os.getenv("EXPERT_MODEL", "deepseek-v4-flash")
+EXPERT_MODEL = os.getenv("EXPERT_MODEL", "qwen3.6-flash")
 LEARNING_MODEL = os.getenv("LEARNING_MODEL", "deepseek-v4-flash")
 REVIEWER_MODEL = os.getenv("REVIEWER_MODEL", "qwen3.6-flash")
+MEMORY_MODEL = os.getenv("MEMORY_MODEL", "qwen3.6-flash")
 
 # LLM Server Config (Common for DashScope)
 DEFAULT_LLM_CONFIG = {

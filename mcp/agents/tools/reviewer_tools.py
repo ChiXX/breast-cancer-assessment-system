@@ -69,6 +69,12 @@ class VerifySkillFormat(BaseTool):
         if responses:
             new_content = responses[-1][-1]['content']
             
+            # Clean up output: if it's wrapped in markdown blocks, extract them
+            import re
+            md_blocks = re.findall(r'```(?:markdown|json)?\n(.*?)\n```', new_content, re.DOTALL)
+            if md_blocks:
+                new_content = md_blocks[0]
+            
             if 'risk_level' in new_content or 'advice' in new_content:
                 if not file_path.endswith('.md'):
                     file_path = file_path.split('.')[0] + '.md'
@@ -76,7 +82,7 @@ class VerifySkillFormat(BaseTool):
                     f.write(new_content)
                 return {'status': 'success', 'message': f'Format verified and cleaned for {resource_name}.'}
             else:
-                return {'status': 'error', 'message': 'Reviewer output seems corrupted or empty.'}
+                return {'status': 'error', 'message': 'Reviewer output seems corrupted or lacks required fields.'}
         
         return {'status': 'error', 'message': 'Review failed'}
 
@@ -140,13 +146,16 @@ class ResolveSkillConflicts(BaseTool):
         if responses:
             raw_res = responses[-1][-1]['content']
             try:
-                # 提取 JSON 部分
-                if '```json' in raw_res:
-                    raw_res = raw_res.split('```json')[1].split('```')[0].strip()
-                elif '```' in raw_res:
-                    raw_res = raw_res.split('```')[1].split('```')[0].strip()
+                # Robust JSON extraction using regex
+                import re
+                json_blocks = re.findall(r'```json\n(.*?)\n```', raw_res, re.DOTALL)
+                if not json_blocks:
+                    json_blocks = re.findall(r'(\{.*\})', raw_res, re.DOTALL)
                 
-                updates = json.loads(raw_res)
+                if not json_blocks:
+                    return {'status': 'success', 'message': 'No conflicts found or no updates suggested.'}
+                
+                updates = json.loads(json_blocks[0])
                 for filename, new_content in updates.items():
                     # 强制使用 .md 扩展名
                     filename_base = filename.split('.')[0]

@@ -1,6 +1,6 @@
 from enum import Enum
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
+from typing import Optional
 
 class RiskLevel(str, Enum):
     HIGH = "HIGH"

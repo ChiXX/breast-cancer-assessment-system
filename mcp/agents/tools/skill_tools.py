@@ -8,15 +8,9 @@ from langsmith import traceable
 def get_skill_paths():
     """获取技能搜索路径：项目路径和个人路径"""
     paths = []
-    # 项目路径: mcp/agents/skills
     project_skills = os.path.abspath("mcp/agents/skills")
     if os.path.exists(project_skills):
         paths.append(project_skills)
-    
-    # 个人路径: ~/.qwen/skills
-    personal_skills = os.path.expanduser("~/.qwen/skills")
-    if os.path.exists(personal_skills):
-        paths.append(personal_skills)
         
     return paths
 
@@ -108,12 +102,11 @@ class ReadSkill(BaseTool):
                                 'content': parsed.get('content', '')
                             }
         
-        # 3. 增强逻辑：如果没找到顶级技能，尝试在所有技能目录中查找匹配的资源文件 (.md 或 .json)
+        # 3. 增强逻辑：如果没找到顶级技能，尝试在所有技能目录中查找匹配的资源文件 (.md)
         resource_name = skill_name
         possible_names = [resource_name]
-        if not resource_name.endswith('.md') and not resource_name.endswith('.json'):
+        if not resource_name.endswith('.md'):
             possible_names.append(resource_name + '.md')
-            possible_names.append(resource_name + '.json')
             
         for root in skill_roots:
             if not os.path.exists(root):
@@ -185,7 +178,14 @@ class UpsertSkill(BaseTool):
             'updated_at': datetime.datetime.now().isoformat()
         }
         
-        md_content = f"---\n{yaml.dump(metadata, allow_unicode=True)}---\n\n{content}"
+        # Strip existing yaml header from content if present to avoid double headers
+        clean_content = content.strip()
+        if clean_content.startswith('---'):
+            parts = clean_content.split('---', 2)
+            if len(parts) >= 3:
+                clean_content = parts[2].strip()
+        
+        md_content = f"---\n{yaml.dump(metadata, allow_unicode=True)}---\n\n{clean_content}"
         
         with open(skill_md_path, 'w', encoding='utf-8') as f:
             f.write(md_content)
@@ -286,14 +286,13 @@ class ResolveSkillReferences(BaseTool):
                     content = f.read()
                 return {'status': 'success', 'content': content}
             
-            # 兼容性处理：如果没带扩展名，尝试 .md 或 .json
+            # 兼容性处理：如果没带扩展名，尝试 .md
             if '.' not in resource_name:
-                for ext in ['.md', '.json']:
-                    target_file = os.path.join(skill_dir, resource_name + ext)
-                    if os.path.exists(target_file):
-                        with open(target_file, 'r', encoding='utf-8') as f:
-                            content = f.read()
-                        return {'status': 'success', 'content': content}
+                target_file = os.path.join(skill_dir, resource_name + '.md')
+                if os.path.exists(target_file):
+                    with open(target_file, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    return {'status': 'success', 'content': content}
                             
         return {'status': 'error', 'message': f'Resource {resource_name} not found in skill {skill_name}'}
 
