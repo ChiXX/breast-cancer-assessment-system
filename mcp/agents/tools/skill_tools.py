@@ -1,9 +1,13 @@
 import os
+import re
 import yaml
 import json
 from typing import Union
 from qwen_agent.tools.base import BaseTool, register_tool
 from langsmith import traceable
+
+REQUIRED_RESOURCE_FIELDS = {'risk_level', 'action_required', 'matched_rule_id', 'contact_team'}
+MEMORY_DIR = os.path.abspath("mcp/agents/memory")
 
 def get_skill_paths():
     """获取技能搜索路径：项目路径和个人路径"""
@@ -197,24 +201,36 @@ class UpsertSkill(BaseTool):
 
 @register_tool('upsert_skill_resource')
 class UpsertSkillResource(BaseTool):
-    description = '在技能目录下创建或更新子资源文件（如 fever.md）。用于多级渐进式披露。'
+    description = (
+        '在技能目录下创建或更新子资源文件（如 fever.md）。'
+        '工具直接从指定的记忆文件读取完整 assessment 并生成 Markdown，'
+        '你只需提供记忆的 session_id 和 timestamp 标识符。'
+    )
     parameters = {
         'type': 'object',
         'properties': {
             'skill_name': {
                 'type': 'string',
-                'description': '技能名称'
+                'description': '技能名称（固定为 chemotherapy-side-effect-triage）'
             },
             'resource_name': {
                 'type': 'string',
-                'description': '资源文件名（如 fever.md）'
+                'description': '资源文件名（如 oral-mucositis.md）'
             },
-            'content': {
+            'title': {
                 'type': 'string',
-                'description': '资源文件内容'
+                'description': '症状模块标题，如 "口腔黏膜炎（化疗后）"'
+            },
+            'session_id': {
+                'type': 'string',
+                'description': '记忆文件所属的 session_id，如 session_7whj6uk5ycu'
+            },
+            'timestamp': {
+                'type': 'string',
+                'description': '记忆文件的时间戳，如 2026-04-28_14-14-15'
             }
         },
-        'required': ['skill_name', 'resource_name', 'content']
+        'required': ['skill_name', 'resource_name', 'title', 'session_id', 'timestamp']
     }
 
     @traceable(name="Upsert Skill Resource Tool Call")
@@ -224,25 +240,51 @@ class UpsertSkillResource(BaseTool):
                 params = json.loads(params)
             except json.JSONDecodeError:
                 return {'status': 'error', 'message': 'Invalid params'}
-        
+
         skill_name = params.get('skill_name', '')
         resource_name = params.get('resource_name', '')
-        content = params.get('content', '')
-        
-        if not skill_name or not resource_name:
-            return {'status': 'error', 'message': 'skill_name and resource_name are required'}
-            
+        title = params.get('title', '')
+        session_id = params.get('session_id', '')
+        timestamp = params.get('timestamp', '')
+
+        if not all([skill_name, resource_name, session_id, timestamp]):
+            return {'status': 'error', 'message': 'skill_name, resource_name, session_id, timestamp are required'}
+
+        # 直接从记忆文件读取完整 assessment，不经过 LLM
+        memory_path = os.path.join(MEMORY_DIR, session_id, f"{timestamp}.json")
+        if not os.path.exists(memory_path):
+            return {'status': 'error', 'message': f'Memory file not found: {memory_path}'}
+
+        with open(memory_path, 'r', encoding='utf-8') as f:
+            memory_data = json.load(f)
+
+        assessment = memory_data.get('assessment')
+        if not assessment or not isinstance(assessment, dict):
+            return {'status': 'error', 'message': 'No assessment found in memory file'}
+
+        # 校验必填字段
+        missing = REQUIRED_RESOURCE_FIELDS - set(assessment.keys())
+        if missing:
+            return {'status': 'error', 'message': f'Memory assessment 缺少必填字段: {missing}'}
+
+        # 工具自己构建标准 Markdown
+        assessment_json = json.dumps(assessment, ensure_ascii=False, indent=2)
+        content = (
+            f"# {title or resource_name}\n\n"
+            f"## 评估逻辑\n\n"
+            f"```json\n{assessment_json}\n```\n"
+        )
+
         resource_base = resource_name.split('.')[0]
         resource_name = resource_base + '.md'
-            
+
         skill_dir = os.path.join(os.path.abspath("mcp/agents/skills"), skill_name)
         os.makedirs(skill_dir, exist_ok=True)
-        
+
         resource_path = os.path.join(skill_dir, resource_name)
-        
         with open(resource_path, 'w', encoding='utf-8') as f:
             f.write(content)
-            
+
         return {'status': 'success', 'path': resource_path}
 
 @register_tool('resolve_skill_references')
