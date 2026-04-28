@@ -6,7 +6,7 @@
 
 ## 🏗 设计架构
 
-本项目遵循 **Harness Engineering "地图而非手册"** 的设计思想，架构参考 **Hermes Agent 架构**，实现了从感知到决策再到知识进化的闭环。
+本项目遵循 **Harness Engineering** 的设计思想，架构参考 **Hermes Agent 架构**，实现了从感知到决策再到知识进化的闭环。
 
 ```mermaid
 graph TD

@@ -22,3 +22,4 @@ frontend/dist-ssr/
 frontend/*.local
 frontend/npm-debug.log*
 *.log
+mcp/logs

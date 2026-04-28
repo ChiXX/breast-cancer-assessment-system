@@ -1,8 +1,10 @@
 import os
 import json
-from typing import Union
+import json5
+from typing import Union, List
 from qwen_agent.tools.base import BaseTool, register_tool
-from qwen_agent.agents import Assistant
+from qwen_agent.llm import get_chat_model
+from qwen_agent.llm.schema import Message, USER, SYSTEM
 from langsmith import traceable
 from mcp.agents.config import REVIEWER_MODEL, get_llm_cfg
 
@@ -24,14 +26,15 @@ class VerifySkillFormat(BaseTool):
         'required': ['skill_name', 'resource_name']
     }
 
-    def __init__(self, llm_cfg: dict = None):
-        super().__init__()
-        self.llm_cfg = llm_cfg or get_llm_cfg(REVIEWER_MODEL)
+    def __init__(self, cfg: dict = None):
+        super().__init__(cfg)
+        self.llm_cfg = (cfg or {}).get('llm_cfg') or get_llm_cfg(REVIEWER_MODEL)
+        self.llm = get_chat_model(self.llm_cfg)
 
     @traceable(name="Verify Skill Format")
     def call(self, params: Union[str, dict], **kwargs) -> dict:
         if isinstance(params, str):
-            params = json.loads(params)
+            params = json5.loads(params)
         
         skill_name = params.get('skill_name')
         resource_name = params.get('resource_name')
@@ -64,10 +67,23 @@ class VerifySkillFormat(BaseTool):
             f"待审查内容：\n{content}"
         )
         
-        reviewer = Assistant(llm=self.llm_cfg, system_message="你是一个专业的医疗文档审计员。")
-        responses = list(reviewer.run([{'role': 'user', 'content': prompt}]))
+        responses = []
+        messages = [
+            Message(role=SYSTEM, content="你是一个专业的医疗文档审计员。"),
+            Message(role=USER, content=prompt)
+        ]
+        for chunk in self.llm.chat(messages=messages, stream=True):
+            responses.append(chunk)
+            
         if responses:
-            new_content = responses[-1][-1]['content']
+            last_msg = responses[-1]
+            if isinstance(last_msg, list) and last_msg:
+                last_item = last_msg[-1]
+                new_content = last_item.content if hasattr(last_item, 'content') else last_item.get('content', '')
+            elif hasattr(last_msg, 'content'):
+                new_content = last_msg.content
+            else:
+                new_content = last_msg.get('content', '')
             
             # Clean up output: if it's wrapped in markdown blocks, extract them
             import re
@@ -100,14 +116,15 @@ class ResolveSkillConflicts(BaseTool):
         'required': ['skill_name']
     }
 
-    def __init__(self, llm_cfg: dict = None):
-        super().__init__()
-        self.llm_cfg = llm_cfg or get_llm_cfg(REVIEWER_MODEL)
+    def __init__(self, cfg: dict = None):
+        super().__init__(cfg)
+        self.llm_cfg = (cfg or {}).get('llm_cfg') or get_llm_cfg(REVIEWER_MODEL)
+        self.llm = get_chat_model(self.llm_cfg)
 
     @traceable(name="Resolve Skill Conflicts")
     def call(self, params: Union[str, dict], **kwargs) -> dict:
         if isinstance(params, str):
-            params = json.loads(params)
+            params = json5.loads(params)
         
         skill_name = params.get('skill_name')
         skill_dir = os.path.join(os.path.abspath("mcp/agents/skills"), skill_name)
@@ -141,10 +158,23 @@ class ResolveSkillConflicts(BaseTool):
             f"待审查内容：\n{full_context}"
         )
         
-        reviewer = Assistant(llm=self.llm_cfg, system_message="你是一个专业的医疗知识消歧专家。")
-        responses = list(reviewer.run([{'role': 'user', 'content': prompt}]))
+        responses = []
+        messages = [
+            Message(role=SYSTEM, content="你是一个专业的医疗知识消歧专家。"),
+            Message(role=USER, content=prompt)
+        ]
+        for chunk in self.llm.chat(messages=messages, stream=True):
+            responses.append(chunk)
+            
         if responses:
-            raw_res = responses[-1][-1]['content']
+            last_msg = responses[-1]
+            if isinstance(last_msg, list) and last_msg:
+                last_item = last_msg[-1]
+                raw_res = last_item.content if hasattr(last_item, 'content') else last_item.get('content', '')
+            elif hasattr(last_msg, 'content'):
+                raw_res = last_msg.content
+            else:
+                raw_res = last_msg.get('content', '')
             try:
                 # Robust JSON extraction using regex
                 import re
@@ -155,7 +185,7 @@ class ResolveSkillConflicts(BaseTool):
                 if not json_blocks:
                     return {'status': 'success', 'message': 'No conflicts found or no updates suggested.'}
                 
-                updates = json.loads(json_blocks[0])
+                updates = json5.loads(json_blocks[0])
                 for filename, new_content in updates.items():
                     # 强制使用 .md 扩展名
                     filename_base = filename.split('.')[0]

@@ -1,7 +1,7 @@
-import json
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from mcp.agents.tools import get_all_skill_metadata
 from mcp.agents.tools.memory_tools import ReadMemoryList, ReadMemoryDetail
+from mcp.utils.event_logger import eventlog
 
 from mcp.scripts.schemas import (
     EvaluateRequest, 
@@ -23,7 +23,7 @@ async def evaluate(request: EvaluateRequest):
     """
     接收症状描述，返回 Agent 决策结果。
     """
-    print(f"DEBUG: Received evaluate request for session {request.session_id}")
+    eventlog("REQUEST", f"Received evaluate request for session {request.session_id}", {"session_id": request.session_id})
     try:
         response_text = master_agent.chat(
             request.user_input, 
@@ -33,7 +33,7 @@ async def evaluate(request: EvaluateRequest):
         parsed_response = parse_agent_response(response_text)
         return parsed_response
     except Exception as e:
-        print(f"DEBUG: Error in evaluate: {str(e)}")
+        eventlog("ERROR", f"Error in evaluate: {str(e)}", {"session_id": request.session_id, "error": str(e)})
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))

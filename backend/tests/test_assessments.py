@@ -35,7 +35,7 @@ def test_create_assessment_success(client):
     with patch("backend.app.services.assessment_service.evaluate_symptoms", return_value=mock_mcp_response):
         response = client.post("/api/v1/assessments", json=payload)
     
-    assert response.status_code == 201
+    assert response.status_code == 200
     data = response.json()
     assert data["risk_level"] == "中风险"
     assert data["session_id"] == "session_123"

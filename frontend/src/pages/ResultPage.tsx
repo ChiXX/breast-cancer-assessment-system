@@ -211,7 +211,9 @@ export default function ResultPage() {
             ))}
           </div>
           
-          {data.contact_team && (
+          {(data.contact_team || 
+            ['立即线下就医', '24小时内联系团队', '联系团队'].includes(data.action_required || '')) &&
+            !['密切观察', '继续观察与记录'].includes(data.action_required || '') && (
             <button 
               onClick={handleContactTeam}
               className={`mt-8 w-full ${config.color} text-white font-bold py-4 rounded-2xl shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all`}

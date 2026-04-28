@@ -49,7 +49,11 @@ def test_assessment_includes_history(client):
     with patch("backend.app.services.assessment_service.evaluate_symptoms", return_value=mock_response_2) as mock_eval:
         client.post("/api/v1/assessments", json={
             "user_input": "我有点发烧",
-            "session_id": session_id
+            "session_id": session_id,
+            "history": [
+                {"role": "user", "content": "你好"},
+                {"role": "assistant", "content": "请问您还有其他症状吗？"}
+            ]
         })
         
         # VERIFY: history should contain the first interaction

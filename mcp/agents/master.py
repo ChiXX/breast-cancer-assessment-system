@@ -84,7 +84,7 @@ class MedicalMaster(BaseMedicalAgent):
             "1. **中控定位**：你的任务是合理调度工具与资源。你是评估流程的组织者，而不是决策的修改者。\n"
             "2. **检索优先级**：Skills > Memory > rag_query_tool。\n"
             "3. **最终回复格式 (HARD REQUIREMENT)**：当你准备好向用户（患者）进行【追问】或提供【评估结果】时，你**必须且只能**以 JSON 格式返回。严禁在 JSON 块之外添加任何解释文字。\n\n"
-            "注意：在调用工具（如 rag_query_tool, read_skill 等）的过程中，请遵循标准的 Action/Action Input 流程，不要将工具调用包装在上述 JSON 格式中。"
+            "注意：在调用工具时，请直接按照系统预设的工具调用格式输出，严禁将工具调用过程包装在上述 JSON 最终回复格式中。"
             "### 【输出协议】\n"
             "1. **必须包含 `type` 字段**，值只能是 `evaluation` 或 `question`。\n"
             "2. **如果是 `evaluation`**：\n"

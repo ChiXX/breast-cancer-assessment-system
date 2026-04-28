@@ -16,7 +16,7 @@ DEFAULT_LLM_CONFIG = {
     'api_key': os.getenv('DASHSCOPE_API_KEY'),
     'generate_cfg': {
         'top_p': 0.8,
-        'temperature': 0.7
+        'temperature': 0.1
     }
 }
 

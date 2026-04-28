@@ -32,7 +32,8 @@ const riskConfig: Record<string, any> = {
     label: '高风险 (Grade 1)',
     buttonLabel: '立即线下就医',
     glow: 'shadow-rose-100',
-    action: '立即线下就医'
+    action: '立即线下就医',
+    btnBg: 'bg-rose-600'
   },
   'Grade 2': {
     color: 'text-orange-600',
@@ -42,7 +43,8 @@ const riskConfig: Record<string, any> = {
     label: '高风险 (Grade 2)',
     buttonLabel: '24小时内联系团队',
     glow: 'shadow-orange-100',
-    action: '24小时内联系团队'
+    action: '24小时内联系团队',
+    btnBg: 'bg-orange-500'
   },
   'Grade 3': {
     color: 'text-amber-600',
@@ -52,7 +54,8 @@ const riskConfig: Record<string, any> = {
     label: '中风险 (Grade 3)',
     buttonLabel: '联系团队',
     glow: 'shadow-amber-100',
-    action: '联系团队'
+    action: '联系团队',
+    btnBg: 'bg-amber-500'
   },
   'Grade 4': {
     color: 'text-sky-600',
@@ -62,7 +65,8 @@ const riskConfig: Record<string, any> = {
     label: '中风险 (Grade 4)',
     buttonLabel: '密切观察',
     glow: 'shadow-sky-100',
-    action: '密切观察'
+    action: '密切观察',
+    btnBg: 'bg-sky-500'
   },
   'Grade 5': {
     color: 'text-emerald-600',
@@ -72,7 +76,8 @@ const riskConfig: Record<string, any> = {
     label: '低风险 (Grade 5)',
     buttonLabel: '继续观察与记录',
     glow: 'shadow-emerald-100',
-    action: '继续观察与记录'
+    action: '继续观察与记录',
+    btnBg: 'bg-emerald-500'
   }
 };
 
@@ -160,17 +165,6 @@ export default function ChatPage() {
 
   useEffect(() => {
     logEvent(EventName.ASSESSMENT_STARTED, sessionId);
-    
-    const handleBeforeUnload = () => {
-      logEvent(EventName.ASSESSMENT_CLOSED, sessionId);
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      logEvent(EventName.ASSESSMENT_CLOSED, sessionId);
-    };
   }, [sessionId]);
 
   useEffect(() => {
@@ -189,7 +183,6 @@ export default function ChatPage() {
       return assessmentService.submit(text, sessionId, history);
     },
     onSuccess: (data) => {
-      logEvent(EventName.ASSESSMENT_SUBMITTED, sessionId, data.id);
       const aiMessage: Message = {
         id: `a-${Date.now()}`,
         role: 'assistant',
@@ -215,6 +208,7 @@ export default function ChatPage() {
   });
 
   const handleFinishAnswer = (assessment: Assessment) => {
+    logEvent(EventName.ASSESSMENT_CLOSED, sessionId, assessment.id);
     const fullHistory = messages.map(m => ({
       role: m.role,
       content: m.content,
@@ -384,10 +378,10 @@ export default function ChatPage() {
                             <div className="text-[10px] text-gray-400 font-mono bg-gray-100/50 px-2 py-0.5 rounded">
                               RULE: {message.assessment.matched_rule_id}
                             </div>
-                            {message.assessment.contact_team && (
+                            {(message.assessment.contact_team || ['立即线下就医', '24小时内联系团队', '联系团队'].includes(message.assessment.action_required || '')) && !['密切观察', '继续观察与记录'].includes(message.assessment.action_required || '') && (
                               <button
                                 onClick={() => handleContactTeam(message.assessment!)}
-                                className={`px-4 py-2 ${riskConfig[message.assessment.ctcae_grade || message.assessment.risk_level]?.color.replace('text', 'bg')} ${riskConfig[message.assessment.ctcae_grade || message.assessment.risk_level]?.color} text-xs font-bold rounded-xl hover:brightness-95 transition-all shadow-sm active:scale-95`}
+                                className={`px-6 py-2.5 ${riskConfig[message.assessment.ctcae_grade || message.assessment.risk_level]?.btnBg || 'bg-primary'} text-white text-sm font-black rounded-xl hover:brightness-110 transition-all shadow-md active:scale-95`}
                               >
                                 {riskConfig[message.assessment.ctcae_grade || message.assessment.risk_level]?.buttonLabel || '联系团队'}
                               </button>

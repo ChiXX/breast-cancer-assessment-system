@@ -84,6 +84,7 @@ class ReadSkill(BaseTool):
             skill_name = params.get('skill_name', '')
             
         skill_roots = get_skill_paths()
+        from mcp.utils.event_logger import eventlog
         for root in skill_roots:
             if not os.path.exists(root):
                 continue
@@ -95,6 +96,7 @@ class ReadSkill(BaseTool):
                     parsed = parse_skill_md(skill_md_path)
                     if parsed:
                         if parsed.get('metadata', {}).get('name') == skill_name or skill_dir == skill_name:
+                            eventlog("SKILL_READ", f"Reading skill: {skill_name}", {"skill_name": skill_name, "path": skill_md_path})
                             return {
                                 'status': 'success', 
                                 'name': skill_name,
@@ -120,6 +122,7 @@ class ReadSkill(BaseTool):
                     target_file = os.path.join(skill_path, name)
                     if os.path.exists(target_file):
                         with open(target_file, 'r', encoding='utf-8') as f:
+                            eventlog("SKILL_READ", f"Reading skill resource: {skill_name}", {"skill_name": skill_name, "parent_skill": skill_dir, "path": target_file})
                             return {
                                 'status': 'success',
                                 'name': skill_name,

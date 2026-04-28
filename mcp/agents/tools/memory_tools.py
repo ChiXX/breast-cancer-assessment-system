@@ -107,6 +107,8 @@ class ReadMemoryDetail(BaseTool):
         if not os.path.exists(file_path):
             return {'status': 'error', 'message': 'Memory not found'}
             
+        from mcp.utils.event_logger import eventlog
+        eventlog("MEMORY_READ", f"Reading memory: {session_id}/{timestamp}", {"session_id": session_id, "timestamp": timestamp, "path": file_path})
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
             

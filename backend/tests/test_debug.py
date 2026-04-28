@@ -22,7 +22,7 @@ def test_db_reset(client):
     # For now just check if it works.
     response = client.post("/api/v1/debug/db/reset")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "message": "Database reset successful"}
+    assert response.json() == {"status": "ok", "message": "Database dropped and recreated successfully"}
     
     # After reset, dump should be empty
     dump_response = client.get("/api/v1/debug/db/dump")

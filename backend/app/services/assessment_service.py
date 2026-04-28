@@ -30,7 +30,16 @@ def evaluate_assessment(db: Session, assessment_in: AssessmentCreate) -> Assessm
                 history.append({"role": "user", "content": past.user_input})
                 history.append({"role": "assistant", "content": past.display_text or past.advice})
 
-    # 2. Call MCP for evaluation
+    # 2. Log assessment_submitted event before calling MCP
+    db_event = EventLog(
+        event_name="assessment_submitted",
+        session_id=assessment_in.session_id,
+        payload={"user_input": assessment_in.user_input}
+    )
+    db.add(db_event)
+    db.commit()
+
+    # 3. Call MCP for evaluation
     mcp_result = evaluate_symptoms(assessment_in.user_input, assessment_in.session_id, history=history)
     
     # 3. Return response without saving to DB yet

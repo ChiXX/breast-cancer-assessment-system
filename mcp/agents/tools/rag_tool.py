@@ -21,12 +21,16 @@ DOC_MAP_PATH = f"{VECTOR_STORE_DIR}/doc_map.pkl"
 @register_tool('rag_query_tool')
 class RAGQueryTool(BaseTool):
     description = 'Query the local FAISS medical guidelines index for side effect assessment and advice.'
-    parameters = [{
-        'name': 'query',
-        'type': 'string',
-        'description': 'The medical symptom or condition to query',
-        'required': True
-    }]
+    parameters = {
+        'type': 'object',
+        'properties': {
+            'query': {
+                'type': 'string',
+                'description': 'The medical symptom or condition to query'
+            }
+        },
+        'required': ['query']
+    }
 
     def __init__(self, cfg=None):
         super().__init__(cfg)
@@ -56,11 +60,14 @@ class RAGQueryTool(BaseTool):
             return "Knowledge base not initialized or missing."
 
         try:
+            from mcp.utils.event_logger import eventlog
+            eventlog("RAG_QUERY", f"Querying Guidelines: {query}", {"query": query})
             resp = TextEmbedding.call(
                 model=TextEmbedding.Models.text_embedding_v3,
                 input=[query]
             )
             if resp.status_code != 200:
+                eventlog("ERROR", f"Embedding error: {resp.message}", {"query": query, "error": resp.message})
                 return f"Embedding error: {resp.message}"
             
             embedding = resp.output['embeddings'][0]['embedding']
@@ -80,13 +87,18 @@ class RAGQueryTool(BaseTool):
                         "action_required": doc.get('action_required'),
                         "ctcae_grade": doc.get('ctcae_grade'),
                         "advice": doc.get('answer'), # 'answer' in DB is used as advice
+                        "contact_team": doc.get('contact_team', doc.get('risk_level') in ['HIGH', 'MEDIUM']),
                         "rule_id": doc.get('id')
                     })
             
             if not results:
+                eventlog("RAG_QUERY", f"No relevant results found for: {query}", {"query": query, "status": "not_found"})
                 return json.dumps({"status": "not_found", "message": "No relevant information found."}, ensure_ascii=False)
             
+            eventlog("RAG_QUERY", f"Found {len(results)} relevant items", {"query": query, "results_count": len(results)})
             return json.dumps(results, ensure_ascii=False, indent=2)
             
         except Exception as e:
+            from mcp.utils.event_logger import eventlog
+            eventlog("ERROR", f"Error during query: {str(e)}", {"query": query, "exception": str(e)})
             return f"Error during query: {str(e)}"
