@@ -17,7 +17,7 @@
 | **MCP** | Hermes Agents | 意图识别、症状评估、知识进化 |
 
 ```mermaid
-graph TD
+graph LR
     UI["Frontend"] <-- "API/Events" --> BE["Backend"]
     BE <-- "Data" --> DB[("PostgreSQL")]
     BE <-- "Evaluate" --> MCP["MCP (Agent)"]

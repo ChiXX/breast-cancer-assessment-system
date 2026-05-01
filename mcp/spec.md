@@ -28,7 +28,7 @@
 ## 4. 学习 Agent: LearningAgent (进化)
 - **职责**：扫描未学习记忆（JSON 格式），提取新症状或逻辑，更新 `SKILL.md` 或子资源。
 - **核心逻辑**：从记忆 JSON 中原样提取 `assessment` 对象并持久化到 Skill 资源文件中，禁止对评估逻辑进行二次加工。
-- **触发**：通过 API 手动触发 (`/v1/knowledge/learn`)。
+- **触发**：通过 API 手动触发 (`/v1/knowledge/learn`)，在TUI模式中由`主Agent`自主调用。
 
 ## 5. 审查 Agent: ReviewerAgent (审计)
 - **职责**：对 `LearningAgent` 产出的知识进行格式校验与冲突审查。
