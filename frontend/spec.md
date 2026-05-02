@@ -27,16 +27,12 @@
 - **Auto-scroll**: 对话更新时自动滚动到底部。
 - **Inline Results**: 当 AI 返回明确风险等级（非“未知”）时，在对话流中紧随 AI 回复展示 `RiskBanner` 与 `AdviceCard`。
 
-### 3.2 业务组件
-- **`ChatMessage`**: 对话气泡组件，支持 Markdown 渲染。
-- **`ChatInput`**: 支持多行输入、快捷发送及发送状态反馈。**当显示评估结果时，输入框变为 disabled 状态。**
-- **`RiskBanner`**: 自动映射后端 `risk_level`, `action_required` 和 `ctcae_grade`：
-  - **红色 (Grade 1)**: 立即线下就医 -> 展示“拨打 120”或“联系急诊”按钮。
-  - **橙色 (Grade 2)**: 24小时内联系团队 -> 展示“预约医生”按钮。
-  - **黄色 (Grade 3)**: 联系团队 -> 展示“在线咨询”按钮。
-  - **蓝色 (Grade 4)**: 密切观察 -> 展示“添加观察日志”按钮。
-  - **绿色 (Grade 5)**: 继续观察与记录 -> 展示“完成记录”按钮。
-- **`AssessmentActions`**: 结果展示时出现的附加按钮：
+### 3.2 页面内置模块 (Integrated in ChatPage)
+目前采取高内聚方式，以下业务组件逻辑已内联集成于 `ChatPage.tsx`：
+- **对话气泡 (ChatBubble)**: 区分 User 与 AI 消息，支持历史信息回溯与旧格式兼容。
+- **输入区域 (ChatInput)**: 支持多行输入、快捷发送及发送状态反馈。**当显示评估结果时，输入框变为 disabled 状态。**
+- **风险提示卡片 (RiskBanner)**: 自动映射后端 `risk_level`, `action_required` 和 `ctcae_grade`，按级展示不同颜色及按钮。
+- **操作按钮 (AssessmentActions)**: 结果展示时出现的附加按钮：
   - **结束回答**: 提交最终评估结果并存入历史对话，随后开启新对话（清空当前状态）。
   - **我要补充**: 重新启用输入框，继续对话。
 
@@ -47,10 +43,12 @@
 
 ### 4.2 接口映射
 - `POST /api/v1/assessments`: 提交评估数据以获取实时反馈。
-- `POST /api/v1/assessments/save`: 最终提交评估结果与全量历史对话。
-- `GET /api/v1/assessments`: 获取所有评估记录列表（用于历史页面）。
 - `GET /api/v1/assessments/{id}`: 获取详情。
+- `GET /api/v1/assessments`: 获取所有评估记录列表（可选 `session_id` 参数）。
+- `GET /api/v1/assessments/history`: 根据 `session_id` 获取该 session 的会话历史（`getBySession`）。
 - `GET /api/v1/assessments/{id}/history`: 获取该评估对应的完整对话历史。
+- `POST /api/v1/assessments/save`: 最终提交评估结果与全量历史对话。
+- `POST /api/v1/assessments/learn`: 触发知识学习进化。
 - `POST /api/v1/events`: 埋点事件上报。
 
 ## 5. 可观测性 (Observability)

@@ -16,7 +16,7 @@ class ReviewerAgent(BaseMedicalAgent):
             "你是一个极其严谨的医疗文档合规性审查员。你的职责是审计由其他 Agent 生成的医疗知识库。\n\n"
             "### 【审计任务】\n"
             "1. **格式校验**：调用 `verify_skill_format` 检查每一个新生成或更新的资源文件. 确保其包含：风险等级、下一步建议、是否建议联系团队、参考依据。任何缺失参考依据的知识条目必须被移除。\n"
-            "2. **消歧处理**：调用 `resolve_skill_conflicts` 检查整个 `medical_consultation_workflow` 技能库，识别并修复任何判定标准或建议上的内部冲突。\n\n"
+            "2. **消歧处理**：调用 `resolve_skill_conflicts` 检查整个 `chemotherapy-side-effect-triage` 技能库，识别并修复任何判定标准或建议上的内部冲突。\n\n"
             "### 【工作原则】\n"
             "- **宁缺毋滥**：宁可移除不合规的知识，也不允许任何缺乏依据或格式错误的信息留在库中。\n"
             "- **自洽优先**：整个字典库必须保持逻辑上的绝对统一。\n\n"
