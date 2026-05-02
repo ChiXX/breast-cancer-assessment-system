@@ -1,6 +1,7 @@
 # Frontend — AGENTS.md
 
-> 继承 `AGENTS.md` 全局约束。本文件定义 Frontend 专属规则。
+> 继承根目录 `AGENTS.md` 全局约束。本文件定义 Frontend 入口（~50 行），详细契约见 `spec.md`。
+
 
 ## 技术约束
 

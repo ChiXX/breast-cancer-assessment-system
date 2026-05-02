@@ -1,7 +1,7 @@
 from typing import List, Optional, Iterator
 from langsmith import traceable
 from mcp.agents.base import BaseMedicalAgent
-from mcp.agents.tools import get_all_skill_metadata
+from mcp.agents.tools import get_all_skill_metadata, get_memory_list
 from mcp.agents.learning_agent import LearningAgent
 from mcp.agents.config import MASTER_MODEL, LEARNING_MODEL, get_llm_cfg
 
@@ -49,9 +49,8 @@ class MedicalMaster(BaseMedicalAgent):
         
         # Load unlearned historical memory clues
         historical_memory_text = "暂无未学习的历史记忆线索。"
-        from mcp.agents.tools.memory_tools import ReadMemoryList
-        memory_list_tool = ReadMemoryList()
-        res = memory_list_tool.call({'learned': False})
+        
+        res = get_memory_list(learned=False)
         if res.get('status') == 'success' and res.get('memories'):
             clues = []
             for mem in res['memories']:
@@ -68,20 +67,16 @@ class MedicalMaster(BaseMedicalAgent):
             f"{skills_info}\n\n"
             "## 历史记忆（Memory）\n"
             f"{historical_memory_text}\n\n"
+            "## 乳腺癌副作用知识库（RAG）\n"
+            "使用 `rag_query_tool`进行检索\n\n"
             "### 【核心任务】\n"
-            "1. **信息收集**：如果患者描述不全，请进行追问（question）。追问必须简单明了，字数限制在50字以内。最多只允许追问两次。如果追问两次后信息仍不全，请基于现有信息给出初步评估或引导就医。\n"
-            "2. **专业评估**：一旦信息充足，必须通过调用技能库、检索历史记忆（Memory）或使用 `rag_query_tool` 获取指南依据。\n"
+            "1. **信息收集**：如果患者描述模糊，请进行追问。追问必须简单明了，一次只问一个核心问题，字数在50字以内。最多只允许追问两次。如果追问两次后信息仍不全，请基于现有信息给出初步评估或引导就医。\n"
+            "2. **专业评估**：一旦信息充足，必须通过查看评估技能、检索历史记忆（Memory）或使用 `rag_query_tool` 获取指南依据。\n"
             "   - **【强制要求】**：如果工具返回了完整的评估 JSON（包含 risk_level, action_required 等），你**必须原封不动**地将其放入输出 JSON 的 `data` 字段中。严禁修改任何字段值（如 Grade 或风险等级）。\n"
             "   - 你只需根据评估结果，在 `display_text` 中提供一段自然语言的开场白或简述即可。\n\n"
-            "### 【风险分级与行动映射参考】\n"
-            "（用于追问决策参考，最终输出以工具返回为准）：\n"
-            "1. **高风险 (HIGH)** + **立即线下就医** + **Grade 1**\n"
-            "2. **高风险 (HIGH)** + **24小时内联系团队** + **Grade 2**\n"
-            "3. **中风险 (MEDIUM)** + **联系团队** + **Grade 3**\n"
-            "4. **中风险 (MEDIUM)** + **密切观察** + **Grade 4**\n"
-            "5. **低风险 (LOW)** + **继续观察与记录** + **Grade 5**\n\n"
+            "   - 若未检索到通过评估技能->历史记忆->查询知识库仍未得到答案，需如实回答，此时可要求用户提供更多信息。\n\n"
             "### 【工作准则】\n"
-            "1. **中控定位**：你的任务是合理调度工具与资源。你是评估流程的组织者，而不是决策的修改者。\n"
+            "1. **中控定位**：你的任务是合理调度工具与资源，你是评估流程的组织者，而不是决策的修改者。严禁在没有依据的情况下回答问题\n"
             "2. **检索优先级**：Skills > Memory > rag_query_tool。\n"
             "3. **最终回复格式 (HARD REQUIREMENT)**：当你准备好向用户（患者）进行【追问】或提供【评估结果】时，你**必须且只能**以 JSON 格式返回。严禁在 JSON 块之外添加任何解释文字。\n\n"
             "注意：在调用工具时，请直接按照系统预设的工具调用格式输出，严禁将工具调用过程包装在上述 JSON 最终回复格式中。"

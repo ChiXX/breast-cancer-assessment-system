@@ -1,9 +1,7 @@
 import os
 import json
-import time
 import datetime
-import yaml
-from typing import Union, List, Optional
+from typing import Union, Optional
 from qwen_agent.tools.base import BaseTool, register_tool
 from langsmith import traceable
 
@@ -13,6 +11,43 @@ def ensure_memory_dir(session_id: str):
     path = os.path.join(MEMORY_DIR, session_id)
     os.makedirs(path, exist_ok=True)
     return path
+
+def get_memory_list(learned: Optional[bool] = None) -> dict:
+    if not os.path.exists(MEMORY_DIR):
+        return {'status': 'success', 'memories': []}
+        
+    memories = []
+    for session_dir_name in sorted(os.listdir(MEMORY_DIR)):
+        session_dir = os.path.join(MEMORY_DIR, session_dir_name)
+        if not os.path.isdir(session_dir):
+            continue
+            
+        for filename in sorted(os.listdir(session_dir)):
+            if filename.endswith('.json'):
+                file_path = os.path.join(session_dir, filename)
+                timestamp = filename.replace('.json', '')
+                
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    
+                    is_learned = data.get('learned', False)
+                    
+                    if learned is not None and is_learned != learned:
+                        continue
+                        
+                    memories.append({
+                        'session_id': session_dir_name,
+                        'timestamp': timestamp, 
+                        'title': data.get('title', 'No Title'),
+                        'summary': data.get('summary', ''),
+                        'assessment': data.get('assessment', {}),
+                        'learned': is_learned
+                    })
+                except Exception as e:
+                    print(f"Error reading memory file {file_path}: {e}")
+    
+    return {'status': 'success', 'memories': memories}
 
 @register_tool('read_memory_list')
 class ReadMemoryList(BaseTool):
@@ -37,42 +72,7 @@ class ReadMemoryList(BaseTool):
                 params = {}
         
         filter_learned = params.get('learned')
-        
-        if not os.path.exists(MEMORY_DIR):
-            return {'status': 'success', 'memories': []}
-            
-        memories = []
-        for session_dir_name in sorted(os.listdir(MEMORY_DIR)):
-            session_dir = os.path.join(MEMORY_DIR, session_dir_name)
-            if not os.path.isdir(session_dir):
-                continue
-                
-            for filename in sorted(os.listdir(session_dir)):
-                if filename.endswith('.json'):
-                    file_path = os.path.join(session_dir, filename)
-                    timestamp = filename.replace('.json', '')
-                    
-                    try:
-                        with open(file_path, 'r', encoding='utf-8') as f:
-                            data = json.load(f)
-                        
-                        learned = data.get('learned', False)
-                        
-                        if filter_learned is not None and learned != filter_learned:
-                            continue
-                            
-                        memories.append({
-                            'session_id': session_dir_name,
-                            'timestamp': timestamp, 
-                            'title': data.get('title', 'No Title'),
-                            'summary': data.get('summary', ''),
-                            'assessment': data.get('assessment', {}),
-                            'learned': learned
-                        })
-                    except Exception as e:
-                        print(f"Error reading memory file {file_path}: {e}")
-        
-        return {'status': 'success', 'memories': memories}
+        return get_memory_list(learned=filter_learned)
 
 @register_tool('read_memory_detail')
 class ReadMemoryDetail(BaseTool):

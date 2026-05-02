@@ -1,6 +1,6 @@
 # Backend — AGENTS.md
 
-> 模块级约束，确保 Backend 实现的一致性与健壮性。
+> 继承根目录 `AGENTS.md` 全局约束。本文件是 Backend 入口（~50 行），详细契约见 `spec.md`。
 
 ## 1. 技术栈
 - **Framework**: FastAPI
@@ -24,7 +24,7 @@ uv run uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
 3. **Environment**: 必须提供 `.env.example` 且运行前 `source .venv/bin/activate`。
 
 ## 3. 核心约束
-- **审计优先**: 每次评估必须产生 `assessment` 记录和至少一个 `event_log`。
-- **错误处理**: 调用 MCP 失败时，必须返回清晰的 502 (Bad Gateway) 错误，并记录错误日志。
-- **类型安全**: Pydantic Schema 必须与数据库模型及 API 契约保持 100% 同步。
-- **环境隔离**: 数据库连接通过 `DATABASE_URL` 环境变量配置。
+- **审计留痕**: 临时评估无需落库，但最终“保存”时必须持久化 `assessment` 和关联的会话历史，并触发 `event_log`。
+- **容错处理**: 调用 MCP 等外部服务失败时应返回明确状态码 (如 502)，后端需兜底异常，防止级联崩溃。
+- **类型对齐**: Pydantic Schema 与数据库模型保持一致，但允许根据 API 需求做适度裁剪或组合。
+- **环境隔离**: 数据库连接及依赖服务地址必须通过环境变量配置，禁止硬编码。

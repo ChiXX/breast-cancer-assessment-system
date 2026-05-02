@@ -1,7 +1,7 @@
 # MCP Agent Specification
 
 ## 1. 核心 Agent: MedicalMaster (中控)
-- **定位**：基于 `Assistant` 架构，负责意图识别、资源调度与结果汇总。
+- **定位**：负责意图识别、资源调度与结果汇总。
 - **配置**：模型选型统一收口至 `mcp/agents/config.py`。
 - **风险等级与行动映射**：
   | 风险分级 (risk_level) | 行动建议 (action_required) | CTCAE 级别 (ctcae_grade) | 视觉引导 |
@@ -13,7 +13,7 @@
   | **低风险** (LOW) | 继续观察与记录 | Grade 5 | 绿色 + 健康日志按钮 |
 - **工作准则**：
   1. **检索优先级**：Skills (评估技能) > Memory (未学习记忆) > RAG (知识库)。
-  2. **极简原则**：单次追问仅限一个核心点，两轮封顶。
+  2. **极简原则**：用户问题模糊时进行追问，单次追问仅限一个核心点，两轮封顶。
   3. **输出结构**：严格遵循 JSON 格式输出，包含 `type`、`data` 和 `display_text`。
   4. **历史加载**：按需调用 `read_memory_conversation` 工具从后端加载全量历史对话。
 
@@ -75,7 +75,7 @@
         "learned": false
       }
     ],
-    "context": "JSON 格式的完整对话记录..."
+    "context": "从后端数据库调取的 JSON 格式完整对话记录..."
   }
   ```
 
@@ -90,7 +90,14 @@
 - `mcp/agents/memory/`: 结构化记忆 JSON 存储，按 `session_id` 分包。
 - `mcp/agents/skills/`: 原子技能目录，每个目录下包含 `SKILL.md` 及子资源 Markdown 文件。
 - `mcp/agents/tools/`: 封装好的原子工具集。
+- `mcp/data/`: RAG 私有知识库与索引目录。
+  - **数据结构 (`rag_documents.json`)**: 原始知识采用结构化 JSON，包含 `category`（分类）、`symptom_keywords`（症状关键词）和 `questions`（常见问题）。
+  - **建库方案 (`build_index.py`)**: 
+    1. **文本融合**：提取 JSON 中的分类、症状与问题拼接成综合文本。
+    2. **向量化**：调用 DashScope `text-embedding-v3` 模型将文本转为高维向量（Batch Size 为 10）。
+    3. **持久化**：使用 `FAISS` (IndexFlatL2) 保存向量索引至 `vector_store/index.faiss`，并将索引与原始 JSON 节点的映射表序列化存为 `doc_map.pkl`。
 
-## 8. 可观测性 (LangSmith)
-- **要求**：所有 Agent 调用与 Tool 使用必须注入 Trace ID，记录系统提示词及模型参数。
+## 8. 可观测性 (LangSmith & 日志)
+- **LangSmith**：所有 Agent 调用与 Tool 使用必须注入 Trace ID，记录系统提示词及模型参数。
+- **日志 (Log)**：关键调度链路、工具执行状态与异常报错需通过标准 Logging 机制记录（输出至 `mcp/logs/agent_events.jsonl`），便于本地排查与诊断。
 
