@@ -96,6 +96,7 @@
     1. **文本融合**：提取 JSON 中的分类、症状与问题拼接成综合文本。
     2. **向量化**：调用 DashScope `text-embedding-v3` 模型将文本转为高维向量（Batch Size 为 10）。
     3. **持久化**：使用 `FAISS` (IndexFlatL2) 保存向量索引至 `vector_store/index.faiss`，并将索引与原始 JSON 节点的映射表序列化存为 `doc_map.pkl`。
+    4. **重新建库**：如果修改了 `rag_documents.json`，需要在项目根目录下运行 `uv run python mcp/data/build_index.py` 以重新生成并覆盖 `vector_store` 中的索引文件。
 
 ## 8. 可观测性 (LangSmith & 日志)
 - **LangSmith**：所有 Agent 调用与 Tool 使用必须注入 Trace ID，记录系统提示词及模型参数。
