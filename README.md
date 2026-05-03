@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-本项目是一个基于大模型（LLM）的乳腺癌副作用评估系统，旨在帮助患者识别、分级副作用并提供专业的处置建议。
+本项目是一个基于大模型（LLM）的乳腺癌副作用评估系统，旨在帮助患者识别、分级副作用并提供专业的处置建议。 [演示](demo.md)
 
 ## 🏗 设计架构
 
