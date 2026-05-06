@@ -1,32 +1,18 @@
-import os
 import json
-import pickle
-import numpy as np
-import faiss
-import dashscope
-from dashscope import TextEmbedding
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
-dashscope.api_key = os.getenv('DASHSCOPE_API_KEY')
 from qwen_agent.tools.base import BaseTool, register_tool
 from langsmith import traceable
 from typing import Union
-
-VECTOR_STORE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'vector_store')
-INDEX_PATH = f"{VECTOR_STORE_DIR}/index.faiss"
-DOC_MAP_PATH = f"{VECTOR_STORE_DIR}/doc_map.pkl"
+from mcp.agents.rag_agent import RAGAgent
 
 @register_tool('rag_query_tool')
 class RAGQueryTool(BaseTool):
-    description = 'Query the local FAISS medical guidelines index for side effect assessment and advice.'
+    description = '使用 RAG 专家 Agent 查询乳腺癌副作用知识库并给出评估。当技能库(Skills)和记忆(Memory)无法解答时调用此工具。'
     parameters = {
         'type': 'object',
         'properties': {
             'query': {
                 'type': 'string',
-                'description': 'The medical symptom or condition to query'
+                'description': '患者的具体症状描述或需要评估的问题'
             }
         },
         'required': ['query']
@@ -34,14 +20,9 @@ class RAGQueryTool(BaseTool):
 
     def __init__(self, cfg=None):
         super().__init__(cfg)
-        self.index = None
-        self.doc_map = None
-        if os.path.exists(INDEX_PATH) and os.path.exists(DOC_MAP_PATH):
-            self.index = faiss.read_index(INDEX_PATH)
-            with open(DOC_MAP_PATH, "rb") as f:
-                self.doc_map = pickle.load(f)
+        self.rag_agent = None
 
-    @traceable(name="RAG Query Tool Call")
+    @traceable(name="RAG Agent Tool Call")
     def call(self, params: Union[str, dict], **kwargs) -> str:
         if isinstance(params, str):
             try:
@@ -54,51 +35,18 @@ class RAGQueryTool(BaseTool):
             query = params.get('query', '')
             
         if not query:
-            return "No query provided."
-        
-        if not self.index or not self.doc_map:
-            return "Knowledge base not initialized or missing."
-
+            return json.dumps({"status": "error", "message": "No query provided."}, ensure_ascii=False)
+            
+        if self.rag_agent is None:
+            self.rag_agent = RAGAgent()
+            
         try:
             from mcp.utils.event_logger import eventlog
-            eventlog("RAG_QUERY", f"Querying Guidelines: {query}", {"query": query})
-            resp = TextEmbedding.call(
-                model=TextEmbedding.Models.text_embedding_v3,
-                input=[query]
-            )
-            if resp.status_code != 200:
-                eventlog("ERROR", f"Embedding error: {resp.message}", {"query": query, "error": resp.message})
-                return f"Embedding error: {resp.message}"
+            eventlog("RAG_QUERY_TOOL", f"Calling RAGAgent with query: {query}", {"query": query})
             
-            embedding = resp.output['embeddings'][0]['embedding']
-            embedding_np = np.array([embedding]).astype('float32')
-            
-            # Query top 3
-            D, I = self.index.search(embedding_np, 3)
-            
-            results = []
-            for idx in I[0]:
-                if idx in self.doc_map:
-                    doc = self.doc_map[idx]
-                    results.append({
-                        "id": doc.get('id', 'N/A'),
-                        "risk_level": doc.get('risk_level'),
-                        "risk_label": doc.get('risk_label'),
-                        "action_required": doc.get('action_required'),
-                        "ctcae_grade": doc.get('ctcae_grade'),
-                        "advice": doc.get('answer'), # 'answer' in DB is used as advice
-                        "contact_team": doc.get('contact_team', doc.get('risk_level') in ['HIGH', 'MEDIUM']),
-                        "rule_id": doc.get('id')
-                    })
-            
-            if not results:
-                eventlog("RAG_QUERY", f"No relevant results found for: {query}", {"query": query, "status": "not_found"})
-                return json.dumps({"status": "not_found", "message": "No relevant information found."}, ensure_ascii=False)
-            
-            eventlog("RAG_QUERY", f"Found {len(results)} relevant items", {"query": query, "results_count": len(results)})
-            return json.dumps(results, ensure_ascii=False, indent=2)
-            
+            result = self.rag_agent.chat(query)
+            return result
         except Exception as e:
             from mcp.utils.event_logger import eventlog
-            eventlog("ERROR", f"Error during query: {str(e)}", {"query": query, "exception": str(e)})
-            return f"Error during query: {str(e)}"
+            eventlog("ERROR", f"Error in RAGAgent tool: {str(e)}", {"error": str(e)})
+            return json.dumps({"status": "error", "message": str(e)}, ensure_ascii=False)

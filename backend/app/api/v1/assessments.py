@@ -33,19 +33,19 @@ def save_assessment(save_in: AssessmentSave, db: Session = Depends(get_db)):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Save Error: {str(e)}")
 
-@router.get("/{assessment_id}", response_model=AssessmentResponse)
-def read_assessment(assessment_id: int, db: Session = Depends(get_db)):
-    db_assessment = assessment_service.get_assessment(db, assessment_id)
-    if db_assessment is None:
-        raise HTTPException(status_code=404, detail="Assessment not found")
-    return db_assessment
-
 @router.get("/history", response_model=List[Dict[str, Any]])
 def read_history(session_id: str, db: Session = Depends(get_db)):
     """
     Get full conversation history for a session.
     """
     return assessment_service.get_history(db, session_id)
+
+@router.get("/{assessment_id}", response_model=AssessmentResponse)
+def read_assessment(assessment_id: int, db: Session = Depends(get_db)):
+    db_assessment = assessment_service.get_assessment(db, assessment_id)
+    if db_assessment is None:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+    return db_assessment
 
 @router.get("/{assessment_id}/history", response_model=List[Dict[str, Any]])
 def read_assessment_history(assessment_id: int, db: Session = Depends(get_db)):
